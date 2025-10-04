@@ -1,3 +1,4 @@
+
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
@@ -15,7 +16,15 @@ connectDB();
 
 const app = express();
 app.use(express.json({ limit: '50mb' }));
-app.use(cors());
+// CORS configuration
+const corsOptions = {
+  origin: 'https://smart-attendance-frontend-hz8xd0332-aashutosh31s-projects.vercel.app'
+};
+
+app.use(cors(corsOptions));
+
+// Make sure to also handle preflight requests for all routes
+app.options('*', cors(corsOptions)); 
 
 // --- CORRECTED FACE-API MODEL LOADING ---
 async function loadModels() {
