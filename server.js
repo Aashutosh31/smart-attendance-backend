@@ -18,7 +18,7 @@ const app = express();
 app.use(express.json({ limit: '50mb' }));
 // CORS configuration
 const corsOptions = {
-  origin: 'https://smart-attendance-frontend-hz8xd0332-aashutosh31s-projects.vercel.app'
+origin: 'https://smart-attendance-frontend-seven.vercel.app'
 };
 
 app.use(cors(corsOptions));
