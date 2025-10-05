@@ -9,7 +9,7 @@ const protect = async (req, res, next) => {
         try {
             token = req.headers.authorization.split(' ')[1];
             
-            // Initialize Supabase client
+            // CORRECT: Initialize Supabase client inside the function
             const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
             // Verify token with Supabase
@@ -19,7 +19,6 @@ const protect = async (req, res, next) => {
                 return res.status(401).json({ message: 'Not authorized, token failed' });
             }
 
-            // If a user is successfully retrieved from Supabase
             if (supabaseUser) {
                 // Find the user in your local MongoDB
                 let mongoUser = await User.findOne({ email: supabaseUser.email });
@@ -29,15 +28,12 @@ const protect = async (req, res, next) => {
                     mongoUser = new User({
                         supabaseId: supabaseUser.id,
                         email: supabaseUser.email,
-                        name: supabaseUser.user_metadata.name || supabaseUser.email, // Use name from metadata or default to email
-                        // Assign a default role, which can be updated later by an admin
+                        name: supabaseUser.user_metadata.name || supabaseUser.email,
                         role: supabaseUser.email.endsWith('.admin') ? 'admin' : 'student', 
                     });
                     await mongoUser.save();
                 }
                 
-                // Attach the combined user object (Mongo data + Supabase data) to the request
-                // Prioritize Mongo data in case of conflicts, but spread Supabase user for any extra details
                 req.user = { ...mongoUser.toObject(), ...supabaseUser };
             }
 
