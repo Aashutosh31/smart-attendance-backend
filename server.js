@@ -4,6 +4,8 @@ const cors = require('cors');
 const connectDB = require('./config/db');
 const path = require('path');
 
+// --- THE CRITICAL FIX ---
+// This specific path forces Node.js to load the JavaScript-only version.
 const faceapi = require('@vladmandic/face-api/dist/face-api.node-wasm.js'); 
 const tf = require('@tensorflow/tfjs-core');
 const { setWasmPaths } = require('@tensorflow/tfjs-backend-wasm');
@@ -14,18 +16,18 @@ connectDB();
 const app = express();
 app.use(express.json({ limit: '50mb' }));
 
-// --- THE FIX: Updated CORS Configuration ---
-// This list contains all the URLs that are allowed to make requests to your backend.
+// --- Flexible CORS Configuration ---
 const allowedOrigins = [
-  'https://smart-attendance-frontend-qrx1vam3o-aashutosh31s-projects.vercel.app', // Your new Vercel preview URL
-  'https://smart-attendance-frontend-seven.vercel.app', // Your previous Vercel URL
-  'http://localhost:5173' // Your local frontend development URL
+  'https://smart-attendance-frontend-seven.vercel.app', // Your main frontend URL
+  // This Regular Expression allows requests from any Vercel preview URL.
+  /https:\/\/smart-attendance-frontend-.*-aashutosh31s-projects\.vercel\.app$/, 
+  'http://localhost:5173' // For local development
 ];
 
 const corsOptions = {
   origin: function (origin, callback) {
-    // Allow requests if the origin is in our list or if there's no origin (like from mobile apps or tools)
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+    // Allow requests if the origin is in our list or if there's no origin (like from mobile apps or curl)
+    if (!origin || allowedOrigins.some(o => o instanceof RegExp ? o.test(origin) : o === origin)) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
@@ -35,10 +37,12 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-// This handles pre-flight requests for all routes
+// This handles pre-flight requests for all routes.
 app.options('*', cors(corsOptions)); 
-// --- END OF FIX ---
+// --- END of CORS Configuration ---
 
+
+// --- CORRECTED FACE-API MODEL LOADING ---
 async function loadModels() {
   const wasmPath = path.join(__dirname, 'node_modules/@tensorflow/tfjs-backend-wasm/dist/');
   setWasmPaths(wasmPath);
@@ -59,6 +63,7 @@ async function loadModels() {
   }
 }
 loadModels();
+// --- END OF MODEL LOADING ---
 
 app.get('/', (req, res) => { res.send('AttendTrack API is running...'); });
 
