@@ -2,15 +2,7 @@ const User = require('../models/User.js');
 const Course = require('../models/Course.js');
 const Attendance = require('../models/Attendance.js');
 const bcrypt = require('bcryptjs');
-const {createClient} = require('@supabase/supabase-js'); 
-
-// Initialize the Supabase admin client
-const supabaseAdmin = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY,
-  { auth: { autoRefreshToken: false, persistSession: false } }
-);
-
+const { createClient } = require('@supabase/supabase-js');
 
 // --- NEW FUNCTION ---
 // Fetches all users that match a specific role
@@ -38,15 +30,22 @@ exports.getAllFaculty = async (req, res) => {
 
 // Add a new faculty member
 exports.addFaculty = async (req, res) => {
+    // FIX: Initialize Supabase Admin Client INSIDE the function
+    const supabaseAdmin = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_KEY,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+
     const { name, email, department } = req.body;
-    const temporaryPassword = 'password123'; // Users should be prompted to change this
+    const temporaryPassword = 'password123';
 
     if (!name || !email || !department) {
         return res.status(400).json({ message: 'Please provide name, email, and department.' });
     }
 
     try {
-        // Step 1: Create the user in Supabase Auth with the role in metadata
+        // Step 1: Create user in Supabase
         const { data: { user }, error: authError } = await supabaseAdmin.auth.admin.createUser({
             email: email,
             password: temporaryPassword,
@@ -54,11 +53,9 @@ exports.addFaculty = async (req, res) => {
             app_metadata: { role: 'faculty', name: name }
         });
 
-        if (authError) {
-            throw new Error(authError.message);
-        }
+        if (authError) throw new Error(authError.message);
 
-        // Step 2: Create the user in your MongoDB database
+        // Step 2: Create user in MongoDB
         const newFaculty = new User({
             supabaseId: user.id,
             name,
@@ -68,7 +65,7 @@ exports.addFaculty = async (req, res) => {
         });
         await newFaculty.save();
 
-        res.status(201).json({ message: "Faculty created successfully in Supabase and MongoDB.", user: newFaculty });
+        res.status(201).json({ message: "Faculty created in Supabase and MongoDB.", user: newFaculty });
 
     } catch (error) {
         console.error(`Error adding faculty: ${error.message}`);
@@ -81,7 +78,14 @@ exports.addFaculty = async (req, res) => {
 
 // Add a new HOD
 exports.addHod = async (req, res) => {
-    const { name, email, department } = req.body;
+    // FIX: Initialize Supabase Admin Client INSIDE the function
+    const supabaseAdmin = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_KEY,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+
+    const { name, email, department, courseId } = req.body;
     const temporaryPassword = 'password123';
 
     if (!name || !email || !department) {
@@ -97,9 +101,7 @@ exports.addHod = async (req, res) => {
             app_metadata: { role: 'hod', name: name }
         });
 
-        if (authError) {
-            throw new Error(authError.message);
-        }
+        if (authError) throw new Error(authError.message);
 
         // Step 2: Create HOD in MongoDB
         const newHod = new User({
@@ -107,6 +109,7 @@ exports.addHod = async (req, res) => {
             name,
             email,
             department,
+            course: courseId, // Assign the course ID
             role: 'hod'
         });
         await newHod.save();

@@ -8,10 +8,8 @@ const protect = async (req, res, next) => {
         try {
             token = req.headers.authorization.split(' ')[1];
 
-            // Initialize Supabase client inside the function, as it was correctly before
             const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
-            // Verify token with Supabase
             const { data: { user: supabaseUser }, error } = await supabase.auth.getUser(token);
 
             if (error) {
@@ -19,24 +17,18 @@ const protect = async (req, res, next) => {
             }
 
             if (supabaseUser) {
-                // Check if user exists in your MongoDB
                 let mongoUser = await User.findOne({ email: supabaseUser.email });
 
                 if (!mongoUser) {
-                    // --- THIS IS THE CORRECTED FIX ---
-                    // Get role from Supabase metadata, default to 'student' if not present
                     const role = supabaseUser.app_metadata?.role || 'student';
-
                     mongoUser = new User({
                         supabaseId: supabaseUser.id,
                         email: supabaseUser.email,
                         name: supabaseUser.user_metadata.name || supabaseUser.email,
-                        role: role, // Use the correctly synced role
+                        role: role,
                     });
                     await mongoUser.save();
                 }
-
-                // Attach the MongoDB user object to the request
                 req.user = mongoUser;
             } else {
                 return res.status(401).json({ message: 'Not authorized, user not found' });
