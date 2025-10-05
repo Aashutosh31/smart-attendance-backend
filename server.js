@@ -17,8 +17,9 @@ app.use(express.json({ limit: '50mb' }));
 // --- THE FIX: Updated CORS Configuration ---
 // This list contains all the URLs that are allowed to make requests to your backend.
 const allowedOrigins = [
-  'https://smart-attendance-frontend-seven.vercel.app', // Your Vercel URL
-  'http://localhost:5173' // Your local frontend development URL (default for Vite)
+  'https://smart-attendance-frontend-qrx1vam3o-aashutosh31s-projects.vercel.app', // Your new Vercel preview URL
+  'https://smart-attendance-frontend-seven.vercel.app', // Your previous Vercel URL
+  'http://localhost:5173' // Your local frontend development URL
 ];
 
 const corsOptions = {
