@@ -1,20 +1,36 @@
+// controllers/hodController.js
 const User = require('../models/User');
 const Attendance = require('../models/Attendance');
+const FacultyAttendance = require('../models/FacultyAttendance');
+
 
 exports.getFacultyAttendanceToday = async (req, res) => {
     try {
-        // This is a simplified query. A real one would be more complex.
-        const faculty = await User.find({ role: 'faculty' });
-        // Simulate who is present/absent for the demo
-        const attendanceList = faculty.map((f, i) => ({
-            id: f._id,
-            name: f.name,
-            title: 'Professor',
-            status: i % 2 === 0 ? 'present' : 'absent',
-            checkInTime: i % 2 === 0 ? '09:00 AM' : null
-        }));
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const attendanceRecords = await FacultyAttendance.find({ date: { $gte: today } })
+            .populate('faculty', 'name');
+
+        const allFaculty = await User.find({ role: 'faculty' });
+
+        const attendanceMap = new Map(attendanceRecords.map(rec => [rec.faculty._id.toString(), rec]));
+
+        const attendanceList = allFaculty.map(faculty => {
+            const record = attendanceMap.get(faculty._id.toString());
+            return {
+                id: faculty._id,
+                name: faculty.name,
+                title: 'Professor',
+                status: record ? record.status : 'absent',
+                checkInTime: record ? record.checkInTime : null,
+            };
+        });
+
+
         res.json(attendanceList);
     } catch (err) {
+        console.error("HOD Error:", err)
         res.status(500).json({ message: 'Server Error' });
     }
 };
