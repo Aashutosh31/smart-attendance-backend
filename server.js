@@ -1,12 +1,9 @@
-// server.js
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
 const connectDB = require('./config/db');
 const path = require('path');
 
-// --- THE CRITICAL FIX ---
-// This specific path forces Node.js to load the JavaScript-only version.
 const faceapi = require('@vladmandic/face-api/dist/face-api.node-wasm.js'); 
 const tf = require('@tensorflow/tfjs-core');
 const { setWasmPaths } = require('@tensorflow/tfjs-backend-wasm');
@@ -17,31 +14,30 @@ connectDB();
 const app = express();
 app.use(express.json({ limit: '50mb' }));
 
-// --- CORRECTED CORS CONFIGURATION ---
+// --- THE FIX: Updated CORS Configuration ---
+// This list contains all the URLs that are allowed to make requests to your backend.
 const allowedOrigins = [
-  'https://smart-attendance-frontend-seven.vercel.app',
-  'http://localhost:5173' // Assuming your local frontend runs on this port
+  'https://smart-attendance-frontend-seven.vercel.app', // Your Vercel URL
+  'http://localhost:5173' // Your local frontend development URL (default for Vite)
 ];
 
 const corsOptions = {
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) === -1) {
-      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
-      return callback(new Error(msg), false);
+    // Allow requests if the origin is in our list or if there's no origin (like from mobile apps or tools)
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
     }
-    return callback(null, true);
   },
   credentials: true
 };
 
 app.use(cors(corsOptions));
-app.options('*', cors(corsOptions)); // Handle preflight requests
+// This handles pre-flight requests for all routes
+app.options('*', cors(corsOptions)); 
 // --- END OF FIX ---
 
-
-// --- CORRECTED FACE-API MODEL LOADING ---
 async function loadModels() {
   const wasmPath = path.join(__dirname, 'node_modules/@tensorflow/tfjs-backend-wasm/dist/');
   setWasmPaths(wasmPath);
@@ -62,7 +58,6 @@ async function loadModels() {
   }
 }
 loadModels();
-// --- END OF MODEL LOADING ---
 
 app.get('/', (req, res) => { res.send('AttendTrack API is running...'); });
 
