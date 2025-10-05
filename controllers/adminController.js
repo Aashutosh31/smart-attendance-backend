@@ -23,14 +23,15 @@ exports.getAllFaculty = async (req, res) => {
         // Corrected to fetch only users with the 'faculty' role
         const faculty = await User.find({ role: 'faculty' }).select('-password');
         res.json(faculty);
-    } catch (error) {
+    } catch (error)
+        {
         res.status(500).json({ message: 'Server error', error: error.message });
     }
 };
 
 // Add a new faculty member
 exports.addFaculty = async (req, res) => {
-    // FIX: Initialize Supabase Admin Client INSIDE the function
+    // STABLE FIX: Initialize Supabase Admin Client INSIDE the function
     const supabaseAdmin = createClient(
       process.env.SUPABASE_URL,
       process.env.SUPABASE_SERVICE_KEY,
@@ -45,7 +46,7 @@ exports.addFaculty = async (req, res) => {
     }
 
     try {
-        // Step 1: Create user in Supabase
+        // Step 1: Create the user in Supabase Auth
         const { data: { user }, error: authError } = await supabaseAdmin.auth.admin.createUser({
             email: email,
             password: temporaryPassword,
@@ -53,9 +54,11 @@ exports.addFaculty = async (req, res) => {
             app_metadata: { role: 'faculty', name: name }
         });
 
-        if (authError) throw new Error(authError.message);
+        if (authError) {
+            throw new Error(authError.message);
+        }
 
-        // Step 2: Create user in MongoDB
+        // Step 2: Create the user in your MongoDB database
         const newFaculty = new User({
             supabaseId: user.id,
             name,
@@ -65,7 +68,7 @@ exports.addFaculty = async (req, res) => {
         });
         await newFaculty.save();
 
-        res.status(201).json({ message: "Faculty created in Supabase and MongoDB.", user: newFaculty });
+        res.status(201).json({ message: "Faculty created successfully in Supabase and MongoDB.", user: newFaculty });
 
     } catch (error) {
         console.error(`Error adding faculty: ${error.message}`);
@@ -78,7 +81,7 @@ exports.addFaculty = async (req, res) => {
 
 // Add a new HOD
 exports.addHod = async (req, res) => {
-    // FIX: Initialize Supabase Admin Client INSIDE the function
+    // STABLE FIX: Initialize Supabase Admin Client INSIDE the function
     const supabaseAdmin = createClient(
       process.env.SUPABASE_URL,
       process.env.SUPABASE_SERVICE_KEY,
@@ -101,7 +104,9 @@ exports.addHod = async (req, res) => {
             app_metadata: { role: 'hod', name: name }
         });
 
-        if (authError) throw new Error(authError.message);
+        if (authError) {
+            throw new Error(authError.message);
+        }
 
         // Step 2: Create HOD in MongoDB
         const newHod = new User({
@@ -129,9 +134,8 @@ exports.addHod = async (req, res) => {
 // Get all students
 exports.getAllStudents = async (req, res) => {
     try {
-        // Example of fetching students with basic details
         const students = await User.find({ role: 'student' })
-            .populate('course', 'name') // Assuming students are linked to courses
+            .populate('course', 'name')
             .select('name email rollNo course');
         res.json(students);
     } catch (error) {
@@ -146,12 +150,10 @@ exports.getHodAttendance = async (req, res) => {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
-        // Get all HOD attendance records for today
         const records = await AdminHodAttendance.find({
             checkInTime: { $gte: today }
         }).populate('hod', 'name department');
 
-        // Format for admin dashboard
         const hodAttendance = records.map(record => ({
             id: record.hod._id,
             name: record.hod.name,
@@ -172,12 +174,10 @@ exports.getReportsTree = async (req, res) => {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
-        // Get all Faculty attendance records for today
         const facultyRecords = await FacultyAttendance.find({
             checkInTime: { $gte: today }
         });
 
-        // Format for admin dashboard
         const facultyAttendance = facultyRecords.map(record => ({
             id: record._id,
             name: record.name,
@@ -187,9 +187,9 @@ exports.getReportsTree = async (req, res) => {
         }));
 
         res.json({
-            hods: [], // You can fill this if needed
+            hods: [],
             faculty: facultyAttendance,
-            students: [], // You can fill this if needed
+            students: [],
         });
     } catch (error) {
         res.status(500).json({ message: 'Server error', error: error.message });

@@ -1,132 +1,121 @@
-const User = require('../models/User.js');
-const Course = require('../models/Course.js');
-const Attendance = require('../models/Attendance.js');
+const User = require('../models/User');
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const { createClient } = require('@supabase/supabase-js');
+const faceapi = require('face-api.js');
+const canvas = require('canvas');
+const path = require('path');
+const { Canvas, Image, ImageData } = canvas;
 
-// --- NEW FUNCTION ---
-// Fetches all users that match a specific role
-exports.getUsersByRole = async (req, res) => {
+// Setup face-api.js
+faceapi.env.monkeyPatch({ Canvas, Image, ImageData });
+
+const loadModels = async () => {
+    const modelPath = path.join(__dirname, '..', 'face-models');
+    await Promise.all([
+        faceapi.nets.ssdMobilenetv1.loadFromDisk(modelPath),
+        faceapi.nets.faceLandmark68Net.loadFromDisk(modelPath),
+        faceapi.nets.faceRecognitionNet.loadFromDisk(modelPath),
+    ]);
+};
+loadModels();
+
+
+// Get auth status and check face enrollment
+exports.getAuthStatus = async (req, res) => {
     try {
-        const { role } = req.params;
-        const users = await User.find({ role: role }).select('id name'); // Select only the ID and name
-        res.status(200).json(users);
+        const user = await User.findById(req.user.id);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+        res.json({
+            isLoggedIn: true,
+            user: {
+                id: user._id,
+                name: user.name,
+                email: user.email,
+                role: user.role,
+                isFaceEnrolled: user.faceDescriptor ? true : false,
+            },
+        });
     } catch (error) {
-        console.error(`Error fetching users by role: ${error.message}`);
         res.status(500).json({ message: 'Server Error' });
     }
 };
 
-// Get all faculty members
-exports.getAllFaculty = async (req, res) => {
+// Enroll a user's face
+exports.enrollFace = async (req, res) => {
     try {
-        // Corrected to fetch only users with the 'faculty' role
-        const faculty = await User.find({ role: 'faculty' }).select('-password');
-        res.json(faculty);
+        const user = await User.findById(req.user.id);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found.' });
+        }
+        if (!req.file) {
+            return res.status(400).json({ message: 'No image file uploaded.' });
+        }
+
+        const image = await canvas.loadImage(req.file.buffer);
+        const detections = await faceapi.detectSingleFace(image).withFaceLandmarks().withFaceDescriptor();
+
+        if (!detections) {
+            return res.status(400).json({ message: 'No face detected in the image.' });
+        }
+
+        user.faceDescriptor = Array.from(detections.descriptor);
+        await user.save();
+
+        res.status(200).json({ message: 'Face enrolled successfully.' });
     } catch (error) {
-        res.status(500).json({ message: 'Server error', error: error.message });
+        console.error('Face enrollment error:', error);
+        res.status(500).json({ message: 'Server error during face enrollment.' });
     }
 };
 
-// Add a new faculty member
-exports.addFaculty = async (req, res) => {
-    const { name, email, department } = req.body;
+// Verify a user's face
+exports.verifyFace = async (req, res) => {
     try {
-        const password = await bcrypt.hash('password123', 10); // Default password
-        const newFaculty = new User({ name, email, department, role: 'faculty', password });
-        await newFaculty.save();
-        res.status(201).json(newFaculty);
+        const user = await User.findById(req.user.id);
+        if (!user || !user.faceDescriptor) {
+            return res.status(404).json({ message: 'User not found or face not enrolled.' });
+        }
+        if (!req.file) {
+            return res.status(400).json({ message: 'No image file uploaded for verification.' });
+        }
+
+        const image = await canvas.loadImage(req.file.buffer);
+        const detection = await faceapi.detectSingleFace(image).withFaceLandmarks().withFaceDescriptor();
+
+        if (!detection) {
+            return res.status(400).json({ message: 'No face detected in the verification image.' });
+        }
+
+        const faceMatcher = new faceapi.FaceMatcher([new Float32Array(user.faceDescriptor)]);
+        const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
+
+        if (bestMatch.label === 'unknown') {
+            return res.status(401).json({ message: 'Face verification failed.' });
+        }
+
+        // Here, you would typically issue a session token or confirm login
+        res.status(200).json({ message: 'Face verified successfully.' });
     } catch (error) {
-        res.status(500).json({ message: 'Server error', error: error.message });
+        console.error('Face verification error:', error);
+        res.status(500).json({ message: 'Server error during face verification.' });
     }
 };
 
-// Add a new HOD
-exports.addHod = async (req, res) => {
-    const { name, email, department, courseId } = req.body;
-    try {
-        const password = await bcrypt.hash('password123', 10); // Default password
-        const newHod = new User({
-            name,
-            email,
-            department,
-            course: courseId, // Assign the course ID
-            role: 'hod',
-            password
-        });
-        await newHod.save();
-        res.status(201).json(newHod);
-    } catch (error) {
-        res.status(500).json({ message: 'Server error', error: error.message });
-    }
+// --- Note: The functions below are likely superseded by the middleware but are included from the original file ---
+// User registration
+exports.registerUser = async (req, res) => {
+    // This function likely needs to be updated to integrate with Supabase user creation
 };
 
-
-// Get all students
-exports.getAllStudents = async (req, res) => {
-    try {
-        // Example of fetching students with basic details
-        const students = await User.find({ role: 'student' })
-            .populate('course', 'name') // Assuming students are linked to courses
-            .select('name email rollNo course');
-        res.json(students);
-    } catch (error) {
-        res.status(500).json({ message: 'Server error', error: error.message });
-    }
+// User login
+exports.loginUser = async (req, res) => {
+    // This is handled by Supabase on the frontend; this endpoint may be redundant
 };
 
-// Get real-time attendance for all HODs
-exports.getHodAttendance = async (req, res) => {
-    try {
-        const AdminHodAttendance = require('../models/AdminHodAttendance');
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        // Get all HOD attendance records for today
-        const records = await AdminHodAttendance.find({
-            checkInTime: { $gte: today }
-        }).populate('hod', 'name department');
-
-        // Format for admin dashboard
-        const hodAttendance = records.map(record => ({
-            id: record.hod._id,
-            name: record.hod.name,
-            department: record.department,
-            checkInTime: record.checkInTime
-        }));
-
-        res.json(hodAttendance);
-    } catch (error) {
-        res.status(500).json({ message: 'Server error', error: error.message });
-    }
-};
-
-// Placeholder for fetching tree-like report data for all roles
-exports.getReportsTree = async (req, res) => {
-    try {
-        const FacultyAttendance = require('../models/FacultyAttendance');
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        // Get all Faculty attendance records for today
-        const facultyRecords = await FacultyAttendance.find({
-            checkInTime: { $gte: today }
-        });
-
-        // Format for admin dashboard
-        const facultyAttendance = facultyRecords.map(record => ({
-            id: record._id,
-            name: record.name,
-            email: record.email,
-            subject: record.subject,
-            checkInTime: record.checkInTime
-        }));
-
-        res.json({
-            hods: [], // You can fill this if needed
-            faculty: facultyAttendance,
-            students: [], // You can fill this if needed
-        });
-    } catch (error) {
-        res.status(500).json({ message: 'Server error', error: error.message });
-    }
+// Sync with Supabase
+exports.syncWithSupabase = async (req, res) => {
+    // This logic is now handled correctly by the authMiddleware
 };
