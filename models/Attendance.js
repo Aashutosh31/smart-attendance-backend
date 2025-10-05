@@ -1,3 +1,4 @@
+// models/Attendance.js
 const mongoose = require('mongoose');
 
 const AttendanceSchema = new mongoose.Schema({
@@ -6,13 +7,15 @@ const AttendanceSchema = new mongoose.Schema({
     ref: 'Course',
     required: true,
   },
+  // FIX: Changed type from ObjectId to String
   student: {
-    type: mongoose.Schema.Types.ObjectId,
+    type: String,
     ref: 'User',
     required: true,
   },
+  // FIX: Changed type from ObjectId to String
   faculty: {
-    type: mongoose.Schema.Types.ObjectId,
+    type: String,
     ref: 'User',
     required: true,
   },
