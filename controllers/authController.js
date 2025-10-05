@@ -1,57 +1,132 @@
-// controllers/authController.js
 const User = require('../models/User.js');
-const faceapi = require('@vladmandic/face-api/dist/face-api.node-wasm.js');
-const canvas = require('canvas');
+const Course = require('../models/Course.js');
+const Attendance = require('../models/Attendance.js');
+const bcrypt = require('bcryptjs');
 
-const { Canvas, Image, ImageData } = canvas;
-faceapi.env.monkeyPatch({ Canvas, Image, ImageData });
-
-// Handles the one-time face enrollment process
-exports.enrollAndVerifyFace = async (req, res) => {
-    const { image } = req.body;
-    const userId = req.user.id;
-
+// --- NEW FUNCTION ---
+// Fetches all users that match a specific role
+exports.getUsersByRole = async (req, res) => {
     try {
-        const user = await User.findById(userId);
-        if (!user) {
-            return res.status(404).json({ message: "User not found." });
-        }
-        
-
-        if (user.isFaceEnrolled) {
-            return res.status(400).json({ message: "Face has already been enrolled." });
-        }
-
-        const detections = await faceapi.detectSingleFace(await canvas.loadImage(image)).withFaceLandmarks().withFaceDescriptor();
-        if (!detections) {
-            return res.status(400).json({ message: "No face detected. Please try again." });
-        }
-        
-        user.faceDescriptor = Array.from(detections.descriptor);
-        user.isFaceEnrolled = true;
-        await user.save();
-
-        return res.status(200).json({ 
-            message: "Face enrolled successfully!",
-            isFaceEnrolled: true 
-        });
-
+        const { role } = req.params;
+        const users = await User.find({ role: role }).select('id name'); // Select only the ID and name
+        res.status(200).json(users);
     } catch (error) {
-        console.error("Face Enrollment Error:", error);
-        res.status(500).json({ message: 'Server error during face enrollment.' });
+        console.error(`Error fetching users by role: ${error.message}`);
+        res.status(500).json({ message: 'Server Error' });
     }
 };
 
-// Checks the enrollment status of the logged-in user
-exports.getUserStatus = async (req, res) => {
+// Get all faculty members
+exports.getAllFaculty = async (req, res) => {
     try {
-        const user = await User.findById(req.user.id).select('isFaceEnrolled');
-        if (!user) {
-            return res.status(404).json({ message: 'User not found' });
-        }
-        res.json({ isFaceEnrolled: user.isFaceEnrolled });
+        // Corrected to fetch only users with the 'faculty' role
+        const faculty = await User.find({ role: 'faculty' }).select('-password');
+        res.json(faculty);
     } catch (error) {
-        console.error("Get User Status Error:", error);
-        res.status(500).json({ message: 'Server error' });
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
+// Add a new faculty member
+exports.addFaculty = async (req, res) => {
+    const { name, email, department } = req.body;
+    try {
+        const password = await bcrypt.hash('password123', 10); // Default password
+        const newFaculty = new User({ name, email, department, role: 'faculty', password });
+        await newFaculty.save();
+        res.status(201).json(newFaculty);
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
+// Add a new HOD
+exports.addHod = async (req, res) => {
+    const { name, email, department, courseId } = req.body;
+    try {
+        const password = await bcrypt.hash('password123', 10); // Default password
+        const newHod = new User({
+            name,
+            email,
+            department,
+            course: courseId, // Assign the course ID
+            role: 'hod',
+            password
+        });
+        await newHod.save();
+        res.status(201).json(newHod);
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
+
+// Get all students
+exports.getAllStudents = async (req, res) => {
+    try {
+        // Example of fetching students with basic details
+        const students = await User.find({ role: 'student' })
+            .populate('course', 'name') // Assuming students are linked to courses
+            .select('name email rollNo course');
+        res.json(students);
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
+// Get real-time attendance for all HODs
+exports.getHodAttendance = async (req, res) => {
+    try {
+        const AdminHodAttendance = require('../models/AdminHodAttendance');
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        // Get all HOD attendance records for today
+        const records = await AdminHodAttendance.find({
+            checkInTime: { $gte: today }
+        }).populate('hod', 'name department');
+
+        // Format for admin dashboard
+        const hodAttendance = records.map(record => ({
+            id: record.hod._id,
+            name: record.hod.name,
+            department: record.department,
+            checkInTime: record.checkInTime
+        }));
+
+        res.json(hodAttendance);
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
+// Placeholder for fetching tree-like report data for all roles
+exports.getReportsTree = async (req, res) => {
+    try {
+        const FacultyAttendance = require('../models/FacultyAttendance');
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        // Get all Faculty attendance records for today
+        const facultyRecords = await FacultyAttendance.find({
+            checkInTime: { $gte: today }
+        });
+
+        // Format for admin dashboard
+        const facultyAttendance = facultyRecords.map(record => ({
+            id: record._id,
+            name: record.name,
+            email: record.email,
+            subject: record.subject,
+            checkInTime: record.checkInTime
+        }));
+
+        res.json({
+            hods: [], // You can fill this if needed
+            faculty: facultyAttendance,
+            students: [], // You can fill this if needed
+        });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
     }
 };
