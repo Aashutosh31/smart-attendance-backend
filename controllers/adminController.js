@@ -3,6 +3,19 @@ const Course = require('../models/Course.js');
 const Attendance = require('../models/Attendance.js');
 const bcrypt = require('bcryptjs');
 
+// --- NEW FUNCTION ---
+// Fetches all users that match a specific role
+exports.getUsersByRole = async (req, res) => {
+    try {
+        const { role } = req.params;
+        const users = await User.find({ role: role }).select('id name'); // Select only the ID and name
+        res.status(200).json(users);
+    } catch (error) {
+        console.error(`Error fetching users by role: ${error.message}`);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
 // Get all faculty members
 exports.getAllFaculty = async (req, res) => {
     try {
