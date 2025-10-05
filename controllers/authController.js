@@ -1,7 +1,4 @@
 const User = require('../models/User');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const { createClient } = require('@supabase/supabase-js');
 const faceapi = require('face-api.js');
 const canvas = require('canvas');
 const path = require('path');
@@ -19,7 +16,6 @@ const loadModels = async () => {
     ]);
 };
 loadModels();
-
 
 // Get auth status and check face enrollment
 exports.getAuthStatus = async (req, res) => {
@@ -96,26 +92,9 @@ exports.verifyFace = async (req, res) => {
             return res.status(401).json({ message: 'Face verification failed.' });
         }
 
-        // Here, you would typically issue a session token or confirm login
         res.status(200).json({ message: 'Face verified successfully.' });
     } catch (error) {
         console.error('Face verification error:', error);
         res.status(500).json({ message: 'Server error during face verification.' });
     }
-};
-
-// --- Note: The functions below are likely superseded by the middleware but are included from the original file ---
-// User registration
-exports.registerUser = async (req, res) => {
-    // This function likely needs to be updated to integrate with Supabase user creation
-};
-
-// User login
-exports.loginUser = async (req, res) => {
-    // This is handled by Supabase on the frontend; this endpoint may be redundant
-};
-
-// Sync with Supabase
-exports.syncWithSupabase = async (req, res) => {
-    // This logic is now handled correctly by the authMiddleware
 };
