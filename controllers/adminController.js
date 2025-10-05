@@ -2,6 +2,15 @@ const User = require('../models/User.js');
 const Course = require('../models/Course.js');
 const Attendance = require('../models/Attendance.js');
 const bcrypt = require('bcryptjs');
+const {createClient} = require('@supabase/supabase-js'); 
+
+// Initialize the Supabase admin client
+const supabaseAdmin = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_KEY,
+  { auth: { autoRefreshToken: false, persistSession: false } }
+);
+
 
 // --- NEW FUNCTION ---
 // Fetches all users that match a specific role
@@ -30,33 +39,86 @@ exports.getAllFaculty = async (req, res) => {
 // Add a new faculty member
 exports.addFaculty = async (req, res) => {
     const { name, email, department } = req.body;
+    const temporaryPassword = 'password123'; // Users should be prompted to change this
+
+    if (!name || !email || !department) {
+        return res.status(400).json({ message: 'Please provide name, email, and department.' });
+    }
+
     try {
-        const password = await bcrypt.hash('password123', 10); // Default password
-        const newFaculty = new User({ name, email, department, role: 'faculty', password });
+        // Step 1: Create the user in Supabase Auth with the role in metadata
+        const { data: { user }, error: authError } = await supabaseAdmin.auth.admin.createUser({
+            email: email,
+            password: temporaryPassword,
+            email_confirm: true,
+            app_metadata: { role: 'faculty', name: name }
+        });
+
+        if (authError) {
+            throw new Error(authError.message);
+        }
+
+        // Step 2: Create the user in your MongoDB database
+        const newFaculty = new User({
+            supabaseId: user.id,
+            name,
+            email,
+            department,
+            role: 'faculty'
+        });
         await newFaculty.save();
-        res.status(201).json(newFaculty);
+
+        res.status(201).json({ message: "Faculty created successfully in Supabase and MongoDB.", user: newFaculty });
+
     } catch (error) {
-        res.status(500).json({ message: 'Server error', error: error.message });
+        console.error(`Error adding faculty: ${error.message}`);
+        if (error.message.includes('already registered')) {
+            return res.status(409).json({ message: 'A user with this email is already registered.' });
+        }
+        res.status(500).json({ message: 'Server error while adding faculty.' });
     }
 };
 
 // Add a new HOD
 exports.addHod = async (req, res) => {
-    const { name, email, department, courseId } = req.body;
+    const { name, email, department } = req.body;
+    const temporaryPassword = 'password123';
+
+    if (!name || !email || !department) {
+        return res.status(400).json({ message: 'Please provide name, email, and department.' });
+    }
+
     try {
-        const password = await bcrypt.hash('password123', 10); // Default password
+        // Step 1: Create HOD in Supabase
+        const { data: { user }, error: authError } = await supabaseAdmin.auth.admin.createUser({
+            email: email,
+            password: temporaryPassword,
+            email_confirm: true,
+            app_metadata: { role: 'hod', name: name }
+        });
+
+        if (authError) {
+            throw new Error(authError.message);
+        }
+
+        // Step 2: Create HOD in MongoDB
         const newHod = new User({
+            supabaseId: user.id,
             name,
             email,
             department,
-            course: courseId, // Assign the course ID
-            role: 'hod',
-            password
+            role: 'hod'
         });
         await newHod.save();
-        res.status(201).json(newHod);
+
+        res.status(201).json({ message: "HOD created successfully in Supabase and MongoDB.", user: newHod });
+
     } catch (error) {
-        res.status(500).json({ message: 'Server error', error: error.message });
+        console.error(`Error adding HOD: ${error.message}`);
+        if (error.message.includes('already registered')) {
+            return res.status(409).json({ message: 'A user with this email is already registered.' });
+        }
+        res.status(500).json({ message: 'Server error while adding HOD.' });
     }
 };
 

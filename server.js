@@ -4,6 +4,22 @@ const cors = require('cors');
 const connectDB = require('./config/db');
 const path = require('path');
 
+// Route files
+const authRoutes = require('./routes/authRoutes.js');
+const adminRoutes = require('./routes/adminRoutes.js');
+const hodRoutes = require('./routes/hodRoutes.js');
+const facultyRoutes = require('./routes/facultyRoutes.js');
+const studentRoutes = require('./routes/studentRoutes.js');
+const courseRoutes = require('./routes/courseRoutes.js');
+
+// Mount routers
+app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/hod', hodRoutes);
+app.use('/api/faculty', facultyRoutes);
+app.use('/api/student', studentRoutes);
+app.use('/api/courses', courseRoutes); // Added the missing course router
+
 // --- THE CRITICAL FIX ---
 // This specific path forces Node.js to load the JavaScript-only version.
 const faceapi = require('@vladmandic/face-api/dist/face-api.node-wasm.js'); 
@@ -76,5 +92,5 @@ app.use('/api/coordinator', require('./routes/coordinatorRoutes.js'));
 app.use('/api/student', require('./routes/studentRoutes.js'));
 app.use('/api/courses', require('./routes/courseRoutes.js'));
 
-const PORT = process.env.PORT || 8000;
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
