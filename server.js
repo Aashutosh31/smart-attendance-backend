@@ -1,4 +1,4 @@
-
+// server.js
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
@@ -16,15 +16,30 @@ connectDB();
 
 const app = express();
 app.use(express.json({ limit: '50mb' }));
-// CORS configuration
+
+// --- CORRECTED CORS CONFIGURATION ---
+const allowedOrigins = [
+  'https://smart-attendance-frontend-seven.vercel.app',
+  'http://localhost:5173' // Assuming your local frontend runs on this port
+];
+
 const corsOptions = {
-origin: 'https://smart-attendance-frontend-seven.vercel.app'
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) === -1) {
+      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+      return callback(new Error(msg), false);
+    }
+    return callback(null, true);
+  },
+  credentials: true
 };
 
 app.use(cors(corsOptions));
+app.options('*', cors(corsOptions)); // Handle preflight requests
+// --- END OF FIX ---
 
-// Make sure to also handle preflight requests for all routes
-app.options('*', cors(corsOptions)); 
 
 // --- CORRECTED FACE-API MODEL LOADING ---
 async function loadModels() {
