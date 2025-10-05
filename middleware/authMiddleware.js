@@ -1,15 +1,5 @@
-// middleware/authMiddleware.js
-const { createClient } = require('@supabase/supabase-js');
+const jwt = require('jsonwebtoken');
 const User = require('../models/User');
-
-const supabaseUrl = process.env.VITE_SUPABASE_URL;
-const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY;
-
-if (!supabaseUrl || !supabaseKey) {
-  console.error("Supabase URL or Key is missing. Check your .env file.");
-}
-
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 const protect = async (req, res, next) => {
   let token;
@@ -19,25 +9,21 @@ const protect = async (req, res, next) => {
     req.headers.authorization.startsWith('Bearer')
   ) {
     try {
+      // Get token from header
       token = req.headers.authorization.split(' ')[1];
+
+      // Verify token
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+      // --- THE ONLY CHANGE NEEDED IS HERE ---
+      // Get user from the token's ID and attach the full Mongoose document to the request.
+      // We exclude the password from being attached.
+      req.user = await User.findById(decoded.id).select('-password');
       
-      const { data: { user: supabaseUser }, error } = await supabase.auth.getUser(token);
-      
-      if (error || !supabaseUser) {
-        return res.status(401).json({ message: 'Not authorized, token failed' });
+      if (!req.user) {
+          return res.status(401).json({ message: 'Not authorized, user not found' });
       }
 
-      // --- THE FIX IS HERE ---
-      // Find the user in our MongoDB by their email from Supabase
-      const mongoUser = await User.findOne({ email: supabaseUser.email });
-      
-      if (!mongoUser) {
-        return res.status(401).json({ message: 'User not found in local database' });
-      }
-      
-      // Attach the full Mongoose user document to the request object
-      req.user = mongoUser;
-      
       next();
     } catch (error) {
       console.error(error);
@@ -52,9 +38,9 @@ const protect = async (req, res, next) => {
 
 const authorize = (...roles) => {
   return (req, res, next) => {
-    if (!req.user || !roles.includes(req.user.role)) {
-      return res.status(403).json({ 
-        message: `User role ${req.user ? req.user.role : 'unknown'} is not authorized to access this route` 
+    if (!roles.includes(req.user.role)) {
+      return res.status(403).json({
+        message: `User role ${req.user.role} is not authorized to access this route`,
       });
     }
     next();
