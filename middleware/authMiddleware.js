@@ -1,11 +1,5 @@
-const jwt = require('jsonwebtoken');
 const User = require('../models/User.js');
 const { createClient } = require('@supabase/supabase-js');
-
-// Initialize Supabase client
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_ANON_KEY;
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 const protect = async (req, res, next) => {
     let token;
@@ -13,6 +7,9 @@ const protect = async (req, res, next) => {
     if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
         try {
             token = req.headers.authorization.split(' ')[1];
+
+            // Initialize Supabase client inside the function, as it was correctly before
+            const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
             // Verify token with Supabase
             const { data: { user: supabaseUser }, error } = await supabase.auth.getUser(token);
@@ -26,41 +23,43 @@ const protect = async (req, res, next) => {
                 let mongoUser = await User.findOne({ email: supabaseUser.email });
 
                 if (!mongoUser) {
-                    // --- THE FIX IS HERE ---
-                    // If user doesn't exist, create them in MongoDB
-                    // 1. Get the role from the Supabase user's app_metadata.
-                    // 2. If the role isn't defined in metadata, default to 'student'.
+                    // --- THIS IS THE CORRECTED FIX ---
+                    // Get role from Supabase metadata, default to 'student' if not present
                     const role = supabaseUser.app_metadata?.role || 'student';
 
                     mongoUser = new User({
                         supabaseId: supabaseUser.id,
                         email: supabaseUser.email,
                         name: supabaseUser.user_metadata.name || supabaseUser.email,
-                        role: role, // Use the role from Supabase!
+                        role: role, // Use the correctly synced role
                     });
                     await mongoUser.save();
                 }
 
-                // Attach the combined user object (Mongo + Supabase) to the request
-                req.user = { ...mongoUser.toObject(), id: mongoUser._id }; 
+                // Attach the MongoDB user object to the request
+                req.user = mongoUser;
+            } else {
+                return res.status(401).json({ message: 'Not authorized, user not found' });
             }
 
             next();
         } catch (error) {
             console.error(error);
-            res.status(401).json({ message: 'Not authorized, token failed' });
+            return res.status(401).json({ message: 'Not authorized, token processing error' });
         }
     }
 
     if (!token) {
-        res.status(401).json({ message: 'Not authorized, no token' });
+        return res.status(401).json({ message: 'Not authorized, no token' });
     }
 };
 
 const authorize = (...roles) => {
     return (req, res, next) => {
         if (!req.user || !roles.includes(req.user.role)) {
-            return res.status(403).json({ message: `User role ${req.user.role} is not authorized to access this route` });
+            return res.status(403).json({
+                message: `User role '${req.user ? req.user.role : 'guest'}' is not authorized to access this route`
+            });
         }
         next();
     };
