@@ -1,11 +1,5 @@
-const { createClient } = require('@supabase/supabase-js');
+const supabase = require('../config/supabaseClient');
 const User = require('../models/User');
-
-// It's better practice to initialize Supabase once and export the client.
-// Ensure your environment variables are correctly set in Vercel.
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_ANON_KEY;
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 /**
  * Middleware to protect routes.
@@ -31,9 +25,8 @@ const protect = async (req, res, next) => {
       }
 
       // Token is valid, find the user in your MongoDB database via the Supabase ID
-      req.user = await User.findOne({ supabaseId: user.id }).select('-password'); // Exclude password from the user object
+      req.user = await User.findOne({ supabaseId: user.id }).select('-password');
 
-      // Handle case where user exists in Supabase but not in your local DB
       if (!req.user) {
         console.error(`User with Supabase ID ${user.id} not found in MongoDB.`);
         return res.status(401).json({ message: 'Not authorized, user not found in application database' });
@@ -47,8 +40,7 @@ const protect = async (req, res, next) => {
       return res.status(500).json({ message: 'An internal server error occurred during authentication' });
     }
   } else {
-    // **THE FIX**: This block handles requests that are missing the token.
-    // It immediately sends a 401 response, preventing the timeout.
+    // This block prevents timeouts by handling requests that are missing the token.
     return res.status(401).json({ message: 'Not authorized, no token provided' });
   }
 };
@@ -77,7 +69,7 @@ const faculty = (req, res, next) => {
     if (req.user && req.user.role === 'faculty') {
       next();
     } else {
-      res.status(403).json({ message: 'Forbidden: Access is restricted to faculty' });
+      res.status(4_03).json({ message: 'Forbidden: Access is restricted to faculty' });
     }
   };
 
