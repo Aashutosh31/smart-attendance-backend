@@ -91,5 +91,22 @@ const getMe = async (req, res) => {
     }
 };
 
+// ADD THIS NEW FUNCTION
+const getFaceEnrollmentStatus = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
 
-module.exports = { syncSupabaseUser, getMe, enrollFace };
+    const isFaceEnrolled = user.faceDescriptor && user.faceDescriptor.length > 0;
+    res.status(200).json({ isFaceEnrolled });
+
+  } catch (error) {
+    console.error('Error fetching face enrollment status:', error);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+
+module.exports = { syncSupabaseUser, getMe, enrollFace, getFaceEnrollmentStatus };
