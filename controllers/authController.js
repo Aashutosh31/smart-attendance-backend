@@ -1,9 +1,10 @@
 const User = require('../models/User');
 const faceapi = require('@vladmandic/face-api/dist/face-api.node-wasm.js');
-const tf = require('@tensorflow/tfjs-core');
-const { setWasmPaths } = require('@tensorflow/tfjs-backend-wasm');
-const path = require('path');
+const canvas = require('canvas'); // --- ADD THIS LINE ---
 
+// --- Make face-api.js use the canvas environment ---
+const { Canvas, Image, ImageData } = canvas;
+faceapi.env.monkeyPatch({ Canvas, Image, ImageData });
 
 const enrollFace = async (req, res) => {
   try {
@@ -14,14 +15,18 @@ const enrollFace = async (req, res) => {
       return res.status(400).json({ message: 'No image provided.' });
     }
 
+    // --- Convert base64 image to buffer and load it with canvas ---
     const imgBuffer = Buffer.from(image.split(',')[1], 'base64');
-    const tensor = tf.node.decodeImage(imgBuffer, 3);
+    const img = await canvas.loadImage(imgBuffer); // --- THIS REPLACES tf.node.decodeImage ---
 
-    const detection = await faceapi.detectSingleFace(tensor).withFaceLandmarks().withFaceDescriptor();
+    // --- Detect face using the loaded image ---
+    const detection = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor();
+
     if (!detection) {
       return res.status(400).json({ message: 'No face detected in the image.' });
     }
 
+    // --- Save the descriptor to the user's document ---
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({ message: 'User not found.' });
