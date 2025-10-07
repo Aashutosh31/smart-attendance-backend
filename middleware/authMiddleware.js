@@ -1,74 +1,64 @@
+// middleware/authMiddleware.js
 const { createClient } = require('@supabase/supabase-js');
 const User = require('../models/User');
 
-// Correctly initialize Supabase client for V2
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  console.error("Supabase URL or Key is missing. Check your .env file.");
+}
+
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 const protect = async (req, res, next) => {
   let token;
 
-  // Check for Bearer token in headers
-  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+  if (
+    req.headers.authorization &&
+    req.headers.authorization.startsWith('Bearer')
+  ) {
     try {
       token = req.headers.authorization.split(' ')[1];
-
-      // Verify token with Supabase
-      const { data: { user }, error } = await supabase.auth.getUser(token);
-
-      if (error || !user) {
+      
+      const { data: { user: supabaseUser }, error } = await supabase.auth.getUser(token);
+      
+      if (error || !supabaseUser) {
         return res.status(401).json({ message: 'Not authorized, token failed' });
       }
 
-      // Find the user in *your* MongoDB via the Supabase ID
-      req.user = await User.findOne({ supabaseId: user.id }).select('-password');
-
-      if (!req.user) {
-        return res.status(401).json({ message: 'Not authorized, user not found in database' });
+      // --- THE FIX IS HERE ---
+      // Find the user in our MongoDB by their email from Supabase
+      const mongoUser = await User.findOne({ email: supabaseUser.email });
+      
+      if (!mongoUser) {
+        return res.status(401).json({ message: 'User not found in local database' });
       }
-
-      next(); // Success: proceed to the next function
-    } catch (error) {
-      console.error('Auth Middleware Error:', error);
-      return res.status(401).json({ message: 'Not authorized, token processing error' });
-    }
-  } else {
-    // **THIS IS THE FIX FOR THE TIMEOUT**: If no token is present, reject immediately.
-    return res.status(401).json({ message: 'Not authorized, no token provided' });
-  }
-};
-
-const admin = (req, res, next) => {
-  if (req.user && req.user.role === 'admin') {
-    next();
-  } else {
-    res.status(403).json({ message: 'Forbidden: Admin access only' });
-  }
-};
-
-const hod = (req, res, next) => {
-  if (req.user && req.user.role === 'hod') {
-    next();
-  } else {
-    res.status(403).json({ message: 'Forbidden: HOD access only' });
-  }
-};
-
-const faculty = (req, res, next) => {
-    if (req.user && req.user.role === 'faculty') {
+      
+      // Attach the full Mongoose user document to the request object
+      req.user = mongoUser;
+      
       next();
-    } else {
-      res.status(403).json({ message: 'Forbidden: Faculty access only' });
+    } catch (error) {
+      console.error(error);
+      res.status(401).json({ message: 'Not authorized, token failed' });
     }
+  }
+
+  if (!token) {
+    res.status(401).json({ message: 'Not authorized, no token' });
+  }
 };
 
-const student = (req, res, next) => {
-    if (req.user && req.user.role === 'student') {
-        next();
-    } else {
-        res.status(403).json({ message: 'Forbidden: Student access only' });
+const authorize = (...roles) => {
+  return (req, res, next) => {
+    if (!req.user || !roles.includes(req.user.role)) {
+      return res.status(403).json({ 
+        message: `User role ${req.user ? req.user.role : 'unknown'} is not authorized to access this route` 
+      });
     }
+    next();
+  };
 };
 
-module.exports = { protect, admin, hod, faculty, student };
+module.exports = { protect, authorize };

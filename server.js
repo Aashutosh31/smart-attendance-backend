@@ -1,67 +1,79 @@
+// server.js
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
-const path = require('path');
-const faceapi = require('face-api.js');
-const canvas = require('canvas');
 const connectDB = require('./config/db');
+const path = require('path');
 
-// --- Initialization ---
+// --- THE CRITICAL FIX ---
+// This specific path forces Node.js to load the JavaScript-only version.
+const faceapi = require('@vladmandic/face-api/dist/face-api.node-wasm.js'); 
+const tf = require('@tensorflow/tfjs-core');
+const { setWasmPaths } = require('@tensorflow/tfjs-backend-wasm');
+
 dotenv.config();
-
-// Patch face-api.js for Node.js environment
-const { Canvas, Image, ImageData } = canvas;
-faceapi.env.monkeyPatch({ Canvas, Image, ImageData });
+connectDB();
 
 const app = express();
-
-// --- Core Middleware ---
-app.use(cors());
 app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// --- API Routes ---
-const authRoutes = require('./routes/authRoutes');
-const adminRoutes = require('./routes/adminRoutes');
-const hodRoutes = require('./routes/hodRoutes');
-const facultyRoutes = require('./routes/facultyRoutes');
-const studentRoutes = require('./routes/studentRoutes');
-const coordinatorRoutes = require('./routes/coordinatorRoutes');
+// --- CORRECTED CORS CONFIGURATION ---
+const allowedOrigins = [
+  'https://smart-attendance-frontend-seven.vercel.app',
+  'http://localhost:5173' // Assuming your local frontend runs on this port
+];
 
-app.use('/api/auth', authRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/hod', hodRoutes);
-app.use('/api/faculty', facultyRoutes);
-app.use('/api/student', studentRoutes);
-app.use('/api/coordinator', coordinatorRoutes);
-
-// --- Asynchronous Startup Function ---
-const startServer = async () => {
-  try {
-    // 1. Connect to MongoDB and wait for it to succeed
-    await connectDB();
-    console.log('MongoDB Connected Successfully ✅');
-
-    // 2. Load all face-api.js models and wait for them to finish
-    const modelPath = path.join(__dirname, 'face-models');
-    console.log(`Loading face models from: ${modelPath}`);
-    await Promise.all([
-      faceapi.nets.ssdMobilenetv1.loadFromDisk(modelPath),
-      faceapi.nets.faceLandmark68Net.loadFromDisk(modelPath),
-      faceapi.nets.faceRecognitionNet.loadFromDisk(modelPath),
-    ]);
-    console.log('Face Models Loaded Successfully ✅');
-
-    // Return the fully initialized app
-    return app;
-  } catch (error) {
-    console.error('💥 FATAL STARTUP ERROR 💥:', error);
-    // If startup fails, exit the process. This is crucial for Vercel logs.
-    process.exit(1);
-  }
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) === -1) {
+      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+      return callback(new Error(msg), false);
+    }
+    return callback(null, true);
+  },
+  credentials: true
 };
 
-// --- Export for Vercel ---
-// Vercel will await the promise resolved by startServer(), ensuring
-// the app is fully ready before handling any requests.
-module.exports = startServer();
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions)); // Handle preflight requests
+// --- END OF FIX ---
+
+
+// --- CORRECTED FACE-API MODEL LOADING ---
+async function loadModels() {
+  const wasmPath = path.join(__dirname, 'node_modules/@tensorflow/tfjs-backend-wasm/dist/');
+  setWasmPaths(wasmPath);
+  
+  await tf.setBackend('wasm');
+  await tf.ready();
+
+  const modelPath = path.join(__dirname, 'face-models');
+  console.log('⌛ Loading Face Recognition Models...');
+  try {
+    await faceapi.nets.ssdMobilenetv1.loadFromDisk(modelPath);
+    await faceapi.nets.faceLandmark68Net.loadFromDisk(modelPath);
+    await faceapi.nets.faceRecognitionNet.loadFromDisk(modelPath);
+    console.log('✅ Face Recognition Models Loaded!');
+  } catch (error) {
+    console.error('❌ Error loading models:', error);
+    process.exit(1);
+  }
+}
+loadModels();
+// --- END OF MODEL LOADING ---
+
+app.get('/', (req, res) => { res.send('AttendTrack API is running...'); });
+
+// --- ROUTES ---
+app.use('/api/auth', require('./routes/authRoutes.js'));
+app.use('/api/admin', require('./routes/adminRoutes.js'));
+app.use('/api/faculty', require('./routes/facultyRoutes.js'));
+app.use('/api/hod', require('./routes/hodRoutes.js'));
+app.use('/api/coordinator', require('./routes/coordinatorRoutes.js'));
+app.use('/api/student', require('./routes/studentRoutes.js'));
+app.use('/api/courses', require('./routes/courseRoutes.js'));
+
+const PORT = process.env.PORT || 8000;
+app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));

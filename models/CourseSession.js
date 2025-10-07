@@ -7,7 +7,6 @@ const CourseSessionSchema = new mongoose.Schema({
     ref: 'Course',
     required: true,
   },
-  // FIX: Changed type from string to ObjectId
   faculty: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',

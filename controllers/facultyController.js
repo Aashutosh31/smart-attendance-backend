@@ -1,42 +1,15 @@
+// controllers/facultyController.js
 const Course = require('../models/Course');
 const Attendance = require('../models/Attendance');
 const User = require('../models/User');
 const FacultyAttendance = require('../models/FacultyAttendance');
 const CourseSession = require('../models/CourseSession');
 
-
 exports.getAssignedCourses = async (req, res) => {
     try {
-        // --- DEBUGGING STEP ---
-        // 1. Log the user object from the token to see who is making the request.
-        console.log('--- Debugging /api/faculty/me/courses ---');
-        console.log('User making request (from token):', req.user);
-
-        if (!req.user || !req.user.id) {
-            console.log('Error: User ID not found on request object.');
-            return res.status(400).json({ message: 'User ID not found, cannot query courses.' });
-        }
-
-        const facultyId = req.user.id;
-        console.log(`Searching for courses assigned to faculty with ID: ${facultyId}`);
-        
-        // 2. Execute the database query.
-        const courses = await Course.find({ faculty: facultyId }).populate('students', 'name');
-        
-        // 3. Log the result of the query.
-        console.log(`Found ${courses.length} courses for this faculty.`);
-        if (courses.length > 0) {
-            console.log('Courses found:', courses);
-        }
-        console.log('------------------------------------------');
-        // --- END DEBUGGING STEP ---
-
+        const courses = await Course.find({ faculty: req.user.id }).populate('students', 'name');
         res.json(courses);
     } catch (err) {
-        // Log any unexpected errors during the process
-        console.error('--- Error in getAssignedCourses ---');
-        console.error(err);
-        console.error('------------------------------------');
         res.status(500).json({ message: 'Server Error' });
     }
 };
@@ -83,9 +56,13 @@ exports.saveAttendance = async (req, res) => {
 
 exports.startCourseSession = async (req, res) => {
     try {
+        // In a real application, you would perform facial recognition here.
+        // For now, we'll assume the faculty is verified.
+
         const facultyId = req.user.id;
         const { courseId } = req.params;
 
+        // Mark faculty as present for the day
         await FacultyAttendance.findOneAndUpdate(
             { faculty: facultyId, date: { $gte: new Date().setHours(0, 0, 0, 0) } },
             {
@@ -97,6 +74,7 @@ exports.startCourseSession = async (req, res) => {
             { upsert: true, new: true }
         );
 
+        // Create a new course session
         const session = new CourseSession({
             course: courseId,
             faculty: facultyId,
