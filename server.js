@@ -6,17 +6,16 @@ const faceapi = require('face-api.js');
 const canvas = require('canvas');
 const connectDB = require('./config/db');
 
-// Load env vars
+// --- Initialization ---
 dotenv.config();
 
-// --- VITAL: Set up face-api.js environment before anything else ---
+// Patch face-api.js for Node.js environment
 const { Canvas, Image, ImageData } = canvas;
 faceapi.env.monkeyPatch({ Canvas, Image, ImageData });
 
-// Initialize express app
 const app = express();
 
-// --- Middleware ---
+// --- Core Middleware ---
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
@@ -36,33 +35,33 @@ app.use('/api/faculty', facultyRoutes);
 app.use('/api/student', studentRoutes);
 app.use('/api/coordinator', coordinatorRoutes);
 
-// --- Create a single startup function ---
+// --- Asynchronous Startup Function ---
 const startServer = async () => {
   try {
-    // 1. Connect to the database
+    // 1. Connect to MongoDB and wait for it to succeed
     await connectDB();
-    console.log('MongoDB Connected... ✅');
+    console.log('MongoDB Connected Successfully ✅');
 
-    // 2. Load face models and WAIT for them to finish
+    // 2. Load all face-api.js models and wait for them to finish
     const modelPath = path.join(__dirname, 'face-models');
-    console.log('Loading face models from:', modelPath);
+    console.log(`Loading face models from: ${modelPath}`);
     await Promise.all([
       faceapi.nets.ssdMobilenetv1.loadFromDisk(modelPath),
       faceapi.nets.faceLandmark68Net.loadFromDisk(modelPath),
-      faceapi.nets.faceRecognitionNet.loadFromDisk(modelPath)
+      faceapi.nets.faceRecognitionNet.loadFromDisk(modelPath),
     ]);
-    console.log('Face models loaded successfully ✅');
+    console.log('Face Models Loaded Successfully ✅');
 
-    // Return the configured app instance
+    // Return the fully initialized app
     return app;
   } catch (error) {
-    console.error('💥 Critical startup error:', error);
-    // Exit the process with a failure code if startup fails. This provides clear logs in Vercel.
-    process.exit(1); 
+    console.error('💥 FATAL STARTUP ERROR 💥:', error);
+    // If startup fails, exit the process. This is crucial for Vercel logs.
+    process.exit(1);
   }
 };
 
-// --- Export a promise that resolves with the app ---
-// Vercel will await this promise before starting the server.
-// This is the correct pattern for serverless functions with async startup tasks.
+// --- Export for Vercel ---
+// Vercel will await the promise resolved by startServer(), ensuring
+// the app is fully ready before handling any requests.
 module.exports = startServer();

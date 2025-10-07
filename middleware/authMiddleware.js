@@ -1,61 +1,49 @@
 const { createClient } = require('@supabase/supabase-js');
 const User = require('../models/User');
 
-// Correctly initialize the Supabase client using createClient
+// Correctly initialize Supabase client for V2
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-/**
- * Middleware to protect routes by verifying a Supabase JWT.
- */
 const protect = async (req, res, next) => {
   let token;
 
-  // Check for a token in the Authorization header
+  // Check for Bearer token in headers
   if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
     try {
-      // Extract the token from the "Bearer <token>" string
       token = req.headers.authorization.split(' ')[1];
 
-      // Verify the token with Supabase
+      // Verify token with Supabase
       const { data: { user }, error } = await supabase.auth.getUser(token);
 
-      // If Supabase returns an error or no user, the token is invalid
       if (error || !user) {
-        return res.status(401).json({ message: 'Not authorized, token failed or is invalid' });
+        return res.status(401).json({ message: 'Not authorized, token failed' });
       }
 
-      // **Important Fix**: Look up the user in MongoDB using their Supabase ID, not the Mongo _id
+      // Find the user in *your* MongoDB via the Supabase ID
       req.user = await User.findOne({ supabaseId: user.id }).select('-password');
 
-      // If the user exists in Supabase but not in your local database
       if (!req.user) {
-        return res.status(401).json({ message: 'Not authorized, user not found in application' });
+        return res.status(401).json({ message: 'Not authorized, user not found in database' });
       }
 
-      // If everything is successful, proceed to the protected route
-      next();
-
+      next(); // Success: proceed to the next function
     } catch (error) {
-      console.error('Authentication error:', error);
-      return res.status(401).json({ message: 'Not authorized, token processing failed' });
+      console.error('Auth Middleware Error:', error);
+      return res.status(401).json({ message: 'Not authorized, token processing error' });
     }
   } else {
-    // **THE CRITICAL FIX**: This block runs if no 'Authorization' header is found.
-    // It immediately sends a 401 Unauthorized response, preventing the timeout crash.
+    // **THIS IS THE FIX FOR THE TIMEOUT**: If no token is present, reject immediately.
     return res.status(401).json({ message: 'Not authorized, no token provided' });
   }
 };
-
-
-// --- Role-based authorization middleware (No changes needed here) ---
 
 const admin = (req, res, next) => {
   if (req.user && req.user.role === 'admin') {
     next();
   } else {
-    res.status(403).json({ message: 'Forbidden: Access is restricted to administrators' });
+    res.status(403).json({ message: 'Forbidden: Admin access only' });
   }
 };
 
@@ -63,7 +51,7 @@ const hod = (req, res, next) => {
   if (req.user && req.user.role === 'hod') {
     next();
   } else {
-    res.status(403).json({ message: 'Forbidden: Access is restricted to HODs' });
+    res.status(403).json({ message: 'Forbidden: HOD access only' });
   }
 };
 
@@ -71,15 +59,15 @@ const faculty = (req, res, next) => {
     if (req.user && req.user.role === 'faculty') {
       next();
     } else {
-      res.status(403).json({ message: 'Forbidden: Access is restricted to faculty' });
+      res.status(403).json({ message: 'Forbidden: Faculty access only' });
     }
-  };
+};
 
 const student = (req, res, next) => {
     if (req.user && req.user.role === 'student') {
         next();
     } else {
-        res.status(403).json({ message: 'Forbidden: Access is restricted to students' });
+        res.status(403).json({ message: 'Forbidden: Student access only' });
     }
 };
 
