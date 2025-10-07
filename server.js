@@ -1,53 +1,25 @@
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
-const connectDB = require('./config/db');
 const path = require('path');
 const faceapi = require('face-api.js');
 const canvas = require('canvas');
+const connectDB = require('./config/db');
 
 // Load env vars
 dotenv.config();
 
-// Connect to database
-connectDB();
+// --- VITAL: Set up face-api.js environment before anything else ---
+const { Canvas, Image, ImageData } = canvas;
+faceapi.env.monkeyPatch({ Canvas, Image, ImageData });
 
 // Initialize express app
 const app = express();
 
-// Set up face-api.js to work in a Node.js environment
-const { Canvas, Image, ImageData } = canvas;
-faceapi.env.monkeyPatch({ Canvas, Image, ImageData });
-
-// --- Model Loading ---
-const modelPath = path.join(__dirname, 'face-models');
-console.log('Loading face models from:', modelPath);
-
-const loadModels = async () => {
-  try {
-    await Promise.all([
-      faceapi.nets.ssdMobilenetv1.loadFromDisk(modelPath),
-      faceapi.nets.faceLandmark68Net.loadFromDisk(modelPath),
-      // FIXED: Corrected 'model_path' to 'modelPath'
-      faceapi.nets.faceRecognitionNet.loadFromDisk(modelPath), 
-    ]);
-    console.log('Face models loaded successfully ✅');
-  } catch (error) {
-    console.error('Error loading face models: ❌', error);
-  }
-};
-// It's better to await the model loading so the server doesn't start handling 
-// requests before the face-api is ready.
-// For serverless, this will run during the function's cold start.
-loadModels();
-
-
 // --- Middleware ---
 app.use(cors());
-// Increased payload limit for face descriptor data
-app.use(express.json({ limit: '50mb' })); 
+app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-
 
 // --- API Routes ---
 const authRoutes = require('./routes/authRoutes');
@@ -64,16 +36,33 @@ app.use('/api/faculty', facultyRoutes);
 app.use('/api/student', studentRoutes);
 app.use('/api/coordinator', coordinatorRoutes);
 
+// --- Create a single startup function ---
+const startServer = async () => {
+  try {
+    // 1. Connect to the database
+    await connectDB();
+    console.log('MongoDB Connected... ✅');
 
-// --- REMOVED app.listen ---
-// The app.listen() block is not needed for Vercel's serverless environment.
-// Vercel handles the server creation and port listening automatically.
-// const PORT = process.env.PORT || 8000;
-// app.listen(PORT, () => {
-//   console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
-// });
+    // 2. Load face models and WAIT for them to finish
+    const modelPath = path.join(__dirname, 'face-models');
+    console.log('Loading face models from:', modelPath);
+    await Promise.all([
+      faceapi.nets.ssdMobilenetv1.loadFromDisk(modelPath),
+      faceapi.nets.faceLandmark68Net.loadFromDisk(modelPath),
+      faceapi.nets.faceRecognitionNet.loadFromDisk(modelPath)
+    ]);
+    console.log('Face models loaded successfully ✅');
 
+    // Return the configured app instance
+    return app;
+  } catch (error) {
+    console.error('💥 Critical startup error:', error);
+    // Exit the process with a failure code if startup fails. This provides clear logs in Vercel.
+    process.exit(1); 
+  }
+};
 
-// --- Export the app for Vercel ---
-// This is the only part needed to expose your app to the Vercel platform.
-module.exports = app;
+// --- Export a promise that resolves with the app ---
+// Vercel will await this promise before starting the server.
+// This is the correct pattern for serverless functions with async startup tasks.
+module.exports = startServer();
