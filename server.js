@@ -4,7 +4,7 @@ const cors = require('cors');
 const connectDB = require('./config/db');
 const path = require('path');
 
-const faceapi = require('@vladmandic/face-api/dist/face-api.node-wasm.js'); 
+const faceapi = require('@vladmandic/face-api/dist/face-api.node-wasm.js');
 const tf = require('@tensorflow/tfjs-core');
 const { setWasmPaths } = require('@tensorflow/tfjs-backend-wasm');
 
