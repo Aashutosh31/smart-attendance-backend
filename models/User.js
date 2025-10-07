@@ -14,9 +14,13 @@ const userSchema = new mongoose.Schema({
   department: { type: String },
   subject: { type: String },
   course: { type: mongoose.Schema.Types.ObjectId, ref: 'Course' }, 
-  faceDescriptor: { type: [Number] }, 
-  isFaceEnrolled: { type: Boolean, default: false },
-}, { timestamps: true });
+  faceDescriptor: {
+    type: [Number],
+    default: []
+  }
+}, {
+  timestamps: true
+});
 
 // Hash password before saving
 userSchema.pre('save', async function(next) {

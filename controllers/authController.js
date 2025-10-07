@@ -1,5 +1,53 @@
 const User = require('../models/User');
 
+
+const enrollFace = async (req, res) => {
+  try {
+    const {
+      image
+    } = req.body;
+    const userId = req.user.id;
+
+    if (!image) {
+      return res.status(400).json({
+        message: 'No image provided.'
+      });
+    }
+
+    // --- Convert the base64 image to a tensor ---
+    const imgBuffer = Buffer.from(image.split(',')[1], 'base64');
+    const tensor = tf.node.decodeImage(imgBuffer, 3);
+
+    // --- Detect the face and compute the descriptor ---
+    const detection = await faceapi.detectSingleFace(tensor).withFaceLandmarks().withFaceDescriptor();
+    if (!detection) {
+      return res.status(400).json({
+        message: 'No face detected in the image.'
+      });
+    }
+
+    // --- Save the descriptor to the user's document ---
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        message: 'User not found.'
+      });
+    }
+
+    user.faceDescriptor = Array.from(detection.descriptor);
+    await user.save();
+
+    res.status(200).json({
+      message: 'Face enrolled successfully!'
+    });
+
+  } catch (error) {
+    console.error('Error in enrollFace:', error);
+    res.status(500).json({
+      message: 'Server error during face enrollment.'
+    });
+  }
+};
 // Sync Supabase user data to MongoDB
 const syncSupabaseUser = async (req, res) => {
   const { email, id, user_metadata } = req.body;
@@ -49,4 +97,4 @@ const getMe = async (req, res) => {
 };
 
 
-module.exports = { syncSupabaseUser, getMe };
+module.exports = { syncSupabaseUser, getMe, enrollFace };
