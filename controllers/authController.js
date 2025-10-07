@@ -1,6 +1,6 @@
 const User = require('../models/User');
 const faceapi = require('@vladmandic/face-api/dist/face-api.node-wasm.js');
-const tf = require('@tensorflow/tfjs-core'); // --- ADD THIS LINE ---
+const tf = require('@tensorflow/tfjs-node'); 
 const {
   setWasmPaths
 } = require('@tensorflow/tfjs-backend-wasm');
@@ -54,6 +54,7 @@ const enrollFace = async (req, res) => {
     });
   }
 };
+
 // Sync Supabase user data to MongoDB
 const syncSupabaseUser = async (req, res) => {
   const { email, id, user_metadata } = req.body;
