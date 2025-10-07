@@ -1,4 +1,10 @@
 const User = require('../models/User');
+const faceapi = require('@vladmandic/face-api/dist/face-api.node-wasm.js');
+const tf = require('@tensorflow/tfjs-core'); // --- ADD THIS LINE ---
+const {
+  setWasmPaths
+} = require('@tensorflow/tfjs-backend-wasm');
+const path = require('path');
 
 
 const enrollFace = async (req, res) => {
