@@ -18,40 +18,33 @@ const protect = async (req, res, next) => {
     try {
       token = req.headers.authorization.split(' ')[1];
       
-      // 1. Verify the token with Supabase to get the user's details
       const { data: { user: supabaseUser }, error } = await supabase.auth.getUser(token);
       
       if (error || !supabaseUser) {
         return res.status(401).json({ message: 'Not authorized, token is invalid.' });
       }
 
-      // 2. Try to find the user in your MongoDB database
       let mongoUser = await User.findOne({ email: supabaseUser.email });
       
-      // --- THE SMART FIX IS HERE ---
-      // 3. If the user doesn't exist in MongoDB, create them now
+      // --- THE FIX IS HERE ---
       if (!mongoUser) {
         console.log(`User not found in MongoDB. Creating new user for: ${supabaseUser.email}`);
         
-        // Generate a random, unusable password because Supabase is handling the actual login.
-        // This is only to satisfy the 'required' constraint in your User model.
         const randomPassword = Math.random().toString(36).slice(-8);
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(randomPassword, salt);
 
         mongoUser = new User({
-          // Supabase often stores the full name in user_metadata
           name: supabaseUser.user_metadata?.full_name || 'New User', 
           email: supabaseUser.email,
           password: hashedPassword,
-          // Assign a default role. 'student' is a safe default for new sign-ups.
-          role: 'student', 
+          // Fetch the role from Supabase metadata, defaulting to 'student' if not present
+          role: supabaseUser.user_metadata?.role || 'student', 
         });
         await mongoUser.save();
-        console.log(`Successfully created and saved new user: ${mongoUser.email}`);
+        console.log(`Successfully created and saved new user: ${mongoUser.email} with role: ${mongoUser.role}`);
       }
       
-      // 4. Attach the user document (either found or newly created) to the request
       req.user = mongoUser;
       next();
 
