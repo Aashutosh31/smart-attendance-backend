@@ -29,7 +29,6 @@ exports.addStudent = async (req, res) => {
         course.students.push(user._id);
         await course.save();
 
-        console.log(`Created student ${email} with temporary password: ${temporaryPassword}`);
         res.status(201).json({ message: 'Student created and assigned to course successfully.' });
 
     } catch (err) {

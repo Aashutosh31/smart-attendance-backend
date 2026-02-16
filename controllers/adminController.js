@@ -31,7 +31,7 @@ exports.addFaculty = async (req, res) => {
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
     const { name, email, department } = req.body;
-    const temporaryPassword = 'password123';
+    const temporaryPassword = Math.random().toString(36).slice(-12);
 
     if (!name || !email || !department) {
         return res.status(400).json({ message: 'Please provide name, email, and department.' });
@@ -66,7 +66,7 @@ exports.addHod = async (req, res) => {
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
     const { name, email, department, courseId } = req.body;
-    const temporaryPassword = 'password123';
+    const temporaryPassword = Math.random().toString(36).slice(-12);
 
     if (!name || !email || !department) {
         return res.status(400).json({ message: 'Please provide name, email, and department.' });
