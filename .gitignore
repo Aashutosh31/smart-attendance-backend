@@ -16,6 +16,19 @@ lerna-debug.log*
 .env.development.local
 .env.test.local
 .env.production.local
+!.env.example
+
+# Secrets and credentials
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.ovpn
+*.keystore
+*.jks
+secrets/
+.secrets/
 
 # Production
 /build

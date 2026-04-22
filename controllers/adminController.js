@@ -3,6 +3,101 @@ const Course = require('../models/Course.js');
 const Attendance = require('../models/Attendance.js');
 const bcrypt = require('bcryptjs');
 const { createClient } = require('@supabase/supabase-js');
+const { randomUUID } = require('crypto');
+
+const getSupabaseAdminClient = () => {
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
+        return null;
+    }
+    return createClient(
+        process.env.SUPABASE_URL,
+        process.env.SUPABASE_SERVICE_KEY,
+        { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+};
+
+exports.createCollegeAdmin = async (req, res) => {
+    const { collegeName, collegeId, fullName, email, password } = req.body;
+
+    if (!collegeName || !collegeId || !fullName || !email || !password) {
+        return res.status(400).json({ message: 'Missing required fields.' });
+    }
+
+    if (password.length < 6) {
+        return res.status(400).json({ message: 'Password must be at least 6 characters.' });
+    }
+
+    const supabaseAdmin = getSupabaseAdminClient();
+    if (!supabaseAdmin) {
+        return res.status(500).json({ message: 'Backend Supabase admin credentials are not configured.' });
+    }
+
+    const collegeUuid = randomUUID();
+
+    try {
+        const { error: collegeError } = await supabaseAdmin
+            .from('colleges')
+            .insert({
+                id: collegeUuid,
+                name: collegeName,
+                college_id_text: collegeId,
+                contact_email: email,
+                created_by: null,
+            });
+
+        if (collegeError) throw collegeError;
+
+        const { data: authCreateData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+            email,
+            password,
+            email_confirm: true,
+            user_metadata: {
+                full_name: fullName,
+                role: 'admin',
+                college_id: collegeUuid,
+            },
+            app_metadata: {
+                role: 'admin',
+            },
+        });
+
+        if (authError || !authCreateData?.user?.id) {
+            await supabaseAdmin.from('colleges').delete().eq('id', collegeUuid);
+            throw authError || new Error('Failed to create admin user.');
+        }
+
+        const userId = authCreateData.user.id;
+
+        // Keep profile tables immediately consistent for frontend pages.
+        await supabaseAdmin.from('profiles').upsert({
+            id: userId,
+            email,
+            full_name: fullName,
+            role: 'admin',
+            college_id: collegeUuid,
+        }, { onConflict: 'id' });
+
+        await supabaseAdmin.from('users').upsert({
+            id: userId,
+            email,
+            full_name: fullName,
+            role: 'admin',
+            college_id: collegeUuid,
+        }, { onConflict: 'id' });
+
+        return res.status(201).json({
+            message: 'College and admin account created successfully.',
+            collegeId: collegeUuid,
+            adminUserId: userId,
+        });
+    } catch (error) {
+        console.error('Error creating college admin:', error);
+        if (error?.code === '23505') {
+            return res.status(409).json({ message: 'College ID or email already exists.' });
+        }
+        return res.status(500).json({ message: error?.message || 'Failed to create college admin.' });
+    }
+};
 
 exports.getUsersByRole = async (req, res) => {
     try {

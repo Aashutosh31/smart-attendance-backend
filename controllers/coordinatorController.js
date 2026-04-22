@@ -21,7 +21,7 @@ exports.addStudent = async (req, res) => {
             email,
             password: temporaryPassword,
             role: 'student',
-            courses: [courseId] // Assign the course to the student
+            course: courseId // Assign the course to the student
         });
         await user.save();
 

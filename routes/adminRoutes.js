@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const {
+    createCollegeAdmin,
     getUsersByRole,
     addFaculty,
     getAllFaculty,
@@ -10,6 +11,9 @@ const {
     getReportsTree
 } = require('../controllers/adminController.js');
 const { protect, authorize } = require('../middleware/authMiddleware.js');
+
+// Public registration route for college + primary admin signup.
+router.post('/college-admin', createCollegeAdmin);
 
 
 // Faculty management
