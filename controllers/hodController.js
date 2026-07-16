@@ -59,8 +59,33 @@ exports.getHodNotifications = async (req, res) => {
         const notifications = [
             { id: 1, message: "Dr. Evans has been absent for 3 consecutive days.", date: new Date() },
         ];
-        res.json(notifications);
-    } catch (err) {
-        res.status(500).json({ message: 'Server Error' });
-    }
+        return sendSuccess(res, 200, 'HOD notifications fetched', notifications);
+    } catch (error) { next(error); }
+};
+
+exports.getDashboardAnalytics = async (req, res, next) => {
+    try {
+        const User = require('../models/User');
+        const Course = require('../models/Course');
+        const Department = require('../models/Department');
+        
+        const hodDeptId = req.user.department;
+        const collegeId = req.user.college;
+
+        const totalStudents = await User.countDocuments({ role: 'student', college: collegeId, department: hodDeptId });
+        const totalFaculty = await User.countDocuments({ role: 'faculty', college: collegeId, department: hodDeptId });
+        const activeCourses = await Course.countDocuments({ college: collegeId, department: hodDeptId });
+
+        return sendSuccess(res, 200, 'Analytics fetched successfully', {
+            stats: {
+                totalStudents,
+                totalFaculty,
+                activeCourses,
+                averageAttendance: 88 // Mock
+            },
+            recentAlerts: [
+                { id: 1, type: 'warning', message: 'Low attendance in CS201', time: '2 hours ago' }
+            ]
+        });
+    } catch (error) { next(error); }
 };

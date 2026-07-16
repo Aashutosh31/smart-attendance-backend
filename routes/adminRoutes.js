@@ -8,7 +8,11 @@ const {
     getAllStudents,
     addHod,
     getHodAttendance,
-    getReportsTree
+    getReportsTree,
+    getReports,
+    generateReport,
+    deleteUser,
+    getDashboardAnalytics
 } = require('../controllers/adminController.js');
 const { protect, authorize } = require('../middleware/authMiddleware.js');
 
@@ -22,12 +26,18 @@ router.get('/faculty', protect, authorize('admin'), getAllFaculty);
 
 // HOD management
 router.post('/hod', protect, authorize('admin'), addHod);
+router.delete('/users/:id', protect, authorize('admin'), deleteUser);
 router.get('/hod-attendance', protect, authorize('admin'), getHodAttendance);
+
+// Analytics
+router.get('/analytics', protect, authorize('admin'), getDashboardAnalytics);
 
 // Student management
 router.get('/students', protect, authorize('admin'), getAllStudents);
 
 // Reports
+router.get('/reports', protect, authorize('admin'), getReports);
+router.post('/reports/generate', protect, authorize('admin'), generateReport);
 router.get('/reports/tree', protect, authorize('admin'), getReportsTree);
 
 // --- NEW ROUTE ---

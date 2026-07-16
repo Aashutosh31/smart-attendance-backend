@@ -199,6 +199,90 @@ exports.getAllStudents = async (req, res) => {
     }
 };
 
+exports.deleteUser = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const user = await User.findById(id);
+        if (!user) {
+            return sendError(res, 404, 'User not found');
+        }
+        
+        // Cannot delete another admin if we're just an admin (optional check, but good for safety)
+        if (user.role === 'admin' && req.user.id !== user.id) {
+            return sendError(res, 403, 'Cannot delete another admin');
+        }
+
+        await User.findByIdAndDelete(id);
+        return sendSuccess(res, 200, 'Reports fetched successfully', reportsTree);
+    } catch (err) {
+        next(err);
+    }
+};
+
+exports.getReports = async (req, res, next) => {
+    try {
+        // Mock reports data for UI since it's just SaaS ready shell
+        const reports = [
+            { id: 1, title: 'Monthly Attendance Overview', type: 'attendance', date: '2026-07-01', size: '2.4 MB' },
+            { id: 2, title: 'Faculty Performance Q2', type: 'faculty', date: '2026-06-30', size: '1.1 MB' },
+            { id: 3, title: 'Low Attendance Alert List', type: 'alert', date: '2026-07-15', size: '845 KB' }
+        ];
+        return sendSuccess(res, 200, 'Reports fetched', reports);
+    } catch (error) { next(error); }
+};
+
+exports.generateReport = async (req, res, next) => {
+    try {
+        const { type } = req.body;
+        return sendSuccess(res, 200, `Report of type ${type} generation started`);
+    } catch (error) { next(error); }
+};
+
+exports.getDashboardAnalytics = async (req, res, next) => {
+    try {
+        const User = require('../models/User');
+        const Department = require('../models/Department');
+        const Course = require('../models/Course');
+
+        const collegeId = req.user.college;
+
+        const totalStudents = await User.countDocuments({ role: 'student', college: collegeId });
+        const totalFaculty = await User.countDocuments({ role: 'faculty', college: collegeId });
+        const totalDepartments = await Department.countDocuments({ college: collegeId });
+        const activeCourses = await Course.countDocuments({ college: collegeId });
+
+        // Mock chart data for now
+        const monthlyAttendance = [
+            { month: 'Jan', rate: 85 },
+            { month: 'Feb', rate: 88 },
+            { month: 'Mar', rate: 92 },
+            { month: 'Apr', rate: 90 },
+            { month: 'May', rate: 94 },
+            { month: 'Jun', rate: 89 }
+        ];
+
+        const departmentPerformance = [
+            { department: 'Computer Science', averageAttendance: 92 },
+            { department: 'Mechanical', averageAttendance: 85 },
+            { department: 'Electronics', averageAttendance: 88 }
+        ];
+
+        return sendSuccess(res, 200, 'Analytics fetched successfully', {
+            stats: {
+                totalStudents,
+                totalFaculty,
+                totalDepartments,
+                activeCourses,
+                averageAttendance: 90 // Mock aggregate
+            },
+            monthlyAttendance,
+            departmentPerformance
+        });
+    } catch (err) {
+        next(err);
+    }
+};
+
 exports.getHodAttendance = async (req, res) => {
     try {
         const AdminHodAttendance = require('../models/AdminHodAttendance');

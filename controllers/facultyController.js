@@ -66,6 +66,50 @@ exports.getTodayLectures = async (req, res, next) => {
     } catch (error) { next(error); }
 };
 
+exports.getDashboardStats = async (req, res, next) => {
+    try {
+        const facultyId = req.user.id;
+        
+        // Active Courses count
+        const totalCourses = await Course.countDocuments({ faculty: facultyId });
+        
+        // Students count (sum of students in all courses)
+        const courses = await Course.find({ faculty: facultyId });
+        let totalStudents = 0;
+        courses.forEach(c => {
+            totalStudents += c.students.length;
+        });
+
+        // Today's lectures
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const upcomingClasses = await CourseSession.countDocuments({
+            faculty: facultyId,
+            date: today,
+            status: 'scheduled'
+        });
+
+        // Attendance rate (last 30 days) - mock implementation for speed, can be real later
+        const attendanceRate = 85; 
+        
+        // Recent activities (Mocked for now since Activity Log model is not fully built for general activities)
+        const recentActivities = [
+            { id: 1, activity: 'New session scheduled', time: '1 hour ago', type: 'course' },
+            { id: 2, activity: 'Lecture completed', time: 'Yesterday', type: 'attendance' }
+        ];
+
+        return sendSuccess(res, 200, 'Stats fetched', {
+            stats: {
+                totalStudents,
+                totalCourses,
+                attendanceRate,
+                upcomingClasses
+            },
+            recentActivities
+        });
+    } catch (error) { next(error); }
+};
+
 exports.startLecture = async (req, res, next) => {
     try {
         const { sessionId } = req.params;

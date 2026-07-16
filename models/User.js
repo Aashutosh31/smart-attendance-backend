@@ -18,8 +18,8 @@ const userSchema = new mongoose.Schema({
   department: { type: String },
   subject: { type: String },
   course: { type: mongoose.Schema.Types.ObjectId, ref: 'Course' }, 
-  faceDescriptor: {
-    type: [Number],
+  faceDescriptors: {
+    type: [[Number]],
     default: []
   }
 }, {

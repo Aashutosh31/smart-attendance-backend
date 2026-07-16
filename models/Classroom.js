@@ -7,7 +7,15 @@ const ClassroomSchema = new mongoose.Schema({
   beacon: {
     uuid: { type: String, required: true },
     major: { type: String, required: true },
-    minor: { type: String, required: true }
+    minor: { type: String, required: true },
+    secret: {
+      type: String,
+      select: false // Never send to client
+    },
+    lastUsedTotp: {
+      type: String,
+      default: null
+    }
   }
 }, { timestamps: true });
 

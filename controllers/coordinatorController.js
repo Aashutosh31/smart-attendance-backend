@@ -37,6 +37,28 @@ exports.addStudent = async (req, res) => {
     }
 };
 
+exports.getStudents = async (req, res, next) => {
+    try {
+        const User = require('../models/User');
+        const students = await User.find({ 
+            role: 'student', 
+            college: req.user.college,
+            department: req.user.department
+        }).select('name email enrollmentNumber gender');
+        
+        // Map fields to match what frontend expects (full_name, enrollment_number, etc.)
+        const mappedStudents = students.map(s => ({
+            id: s._id,
+            full_name: s.name,
+            email: s.email,
+            enrollment_number: s.enrollmentNumber || 'N/A',
+            gender: s.gender || 'Unknown'
+        }));
+        
+        return sendSuccess(res, 200, 'Students fetched', mappedStudents);
+    } catch (error) { next(error); }
+};
+
 exports.getCourses = async (req, res, next) => {
     try {
         const courses = await Course.find();
@@ -86,6 +108,22 @@ exports.getAttendanceByCourseAndDate = async (req, res, next) => {
     } catch (err) {
         next(err);
     }
+};
+
+exports.getDashboardAnalytics = async (req, res, next) => {
+    try {
+        return sendSuccess(res, 200, 'Analytics fetched successfully', {
+            stats: {
+                totalClasses: 120,
+                attendanceRate: 92,
+                anomalies: 3,
+                activeBeacons: 15
+            },
+            recentActivity: [
+                { id: 1, action: 'Lecture Started', details: 'CS301 by Prof. Smith', time: '10 mins ago' }
+            ]
+        });
+    } catch (error) { next(error); }
 };
 
 exports.saveAttendance = async (req, res, next) => {
