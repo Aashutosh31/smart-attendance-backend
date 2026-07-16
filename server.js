@@ -1,4 +1,6 @@
 const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
 const dotenv = require('dotenv');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -21,6 +23,7 @@ dotenv.config();
 connectDB();
 
 const app = express();
+const server = http.createServer(app);
 
 // --- SECURITY MIDDLEWARE ---
 app.use(helmet());
@@ -65,6 +68,23 @@ app.use(cors(corsOptions));
 app.options('*', cors(corsOptions)); 
 // --- END of CORS Configuration ---
 
+// --- SOCKET.IO SETUP ---
+const io = new Server(server, { cors: corsOptions });
+app.set('io', io);
+
+io.on('connection', (socket) => {
+    console.log(`🔌 New real-time client connected: ${socket.id}`);
+    
+    socket.on('joinSession', (sessionId) => {
+        socket.join(sessionId);
+        console.log(`Socket ${socket.id} joined session room: ${sessionId}`);
+    });
+
+    socket.on('disconnect', () => {
+        console.log(`🔌 Client disconnected: ${socket.id}`);
+    });
+});
+// --- END SOCKET.IO SETUP ---
 
 // --- CORRECTED FACE-API MODEL LOADING ---
 async function loadModels() {
@@ -94,14 +114,16 @@ app.get('/', (req, res) => { res.send('AttendTrack API is running...'); });
 // --- ROUTES ---
 app.use('/api/auth', require('./routes/authRoutes.js'));
 app.use('/api/admin', require('./routes/adminRoutes.js'));
-app.use('/api/faculty', require('./routes/facultyRoutes.js'));
 app.use('/api/hod', require('./routes/hodRoutes.js'));
 app.use('/api/coordinator', require('./routes/coordinatorRoutes.js'));
+app.use('/api/faculty', require('./routes/facultyRoutes.js'));
 app.use('/api/student', require('./routes/studentRoutes.js'));
 app.use('/api/courses', require('./routes/courseRoutes.js'));
+app.use('/api/academic', require('./routes/academicRoutes.js'));
+app.use('/api/timetable', require('./routes/timetableRoutes.js'));
 
 // Global Error Handler (must be after routes)
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 8000;
-app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
+server.listen(PORT, () => console.log(`✅ Server & Socket.IO running on port ${PORT}`));

@@ -7,6 +7,11 @@ const AttendanceSchema = new mongoose.Schema({
     ref: 'Course',
     required: true,
   },
+  session: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'CourseSession',
+    required: false, // Optional for backward compatibility / manual overrides
+  },
   // FIX: Changed type from string to ObjectId
   student: {
     type: mongoose.Schema.Types.ObjectId,

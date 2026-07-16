@@ -4,30 +4,29 @@ const Attendance = require('../models/Attendance');
 const User = require('../models/User');
 const FacultyAttendance = require('../models/FacultyAttendance');
 const CourseSession = require('../models/CourseSession');
+const { sendSuccess, sendError } = require('../utils/responseHandler');
 
-exports.getAssignedCourses = async (req, res) => {
+exports.getAssignedCourses = async (req, res, next) => {
     try {
         const courses = await Course.find({ faculty: req.user.id }).populate('students', 'name');
-        res.json(courses);
-    } catch (err) {
-        res.status(500).json({ message: 'Server Error' });
-    }
+        return sendSuccess(res, 200, 'Assigned courses fetched', courses);
+    } catch (err) { next(err); }
 };
 
-exports.recognizeStudentFace = async (req, res) => {
+exports.recognizeStudentFace = async (req, res, next) => {
     // This remains a dummy function as facial recognition is a complex service.
     const mockStudent = { id: `mockStudent_${Date.now()}`, name: 'Scanned Student' };
-    res.json(mockStudent);
+    return sendSuccess(res, 200, 'Student scanned (mock)', mockStudent);
 };
 
-exports.saveAttendance = async (req, res) => {
+exports.saveAttendance = async (req, res, next) => {
     const { studentIds, lectureNumber } = req.body; // These are the PRESENT students
     const { courseId } = req.params;
 
     try {
         const course = await Course.findById(courseId);
         if (!course) {
-            return res.status(404).json({ message: 'Course not found' });
+            return sendError(res, 404, 'Course not found');
         }
 
         const allStudentIdsInCourse = course.students.map(id => id.toString());
@@ -46,45 +45,71 @@ exports.saveAttendance = async (req, res) => {
         });
 
         await Attendance.insertMany(records);
-        res.status(201).json({ message: 'Attendance processed for all students in the course.' });
+        return sendSuccess(res, 201, 'Attendance processed for all students in the course.');
 
     } catch (err) {
-        console.error(err.message);
-        res.status(500).json({ message: 'Server Error' });
+        next(err);
     }
 };
 
-exports.startCourseSession = async (req, res) => {
+exports.getTodayLectures = async (req, res, next) => {
     try {
-        // In a real application, you would perform facial recognition here.
-        // For now, we'll assume the faculty is verified.
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
 
-        const facultyId = req.user.id;
-        const { courseId } = req.params;
+        const sessions = await CourseSession.find({
+            faculty: req.user.id,
+            date: today
+        }).populate('course', 'name code').populate('classroom', 'name');
 
-        // Mark faculty as present for the day
-        await FacultyAttendance.findOneAndUpdate(
-            { faculty: facultyId, date: { $gte: new Date().setHours(0, 0, 0, 0) } },
-            {
-                faculty: facultyId,
-                date: new Date(),
-                status: 'present',
-                checkInTime: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
-            },
-            { upsert: true, new: true }
-        );
+        return sendSuccess(res, 200, 'Today lectures fetched', sessions);
+    } catch (error) { next(error); }
+};
 
-        // Create a new course session
-        const session = new CourseSession({
-            course: courseId,
-            faculty: facultyId,
-        });
+exports.startLecture = async (req, res, next) => {
+    try {
+        const { sessionId } = req.params;
+
+        const session = await CourseSession.findById(sessionId);
+        if (!session) return sendError(res, 404, 'Session not found');
+        if (session.faculty.toString() !== req.user.id) {
+            return sendError(res, 403, 'Not authorized to start this lecture');
+        }
+        
+        session.status = 'live';
+        session.isActive = true;
+        session.actualStartTime = new Date();
         await session.save();
 
-        res.status(200).json({ message: 'Session started successfully', session });
+        const io = req.app.get('io');
+        if (io) {
+            io.to(session.course.toString()).emit('lectureStatusChanged', { sessionId, status: 'live' });
+        }
 
-    } catch (error) {
-        console.error("Error starting session:", error);
-        res.status(500).json({ message: 'Server Error' });
-    }
+        return sendSuccess(res, 200, 'Lecture started (LIVE)', session);
+    } catch (error) { next(error); }
+};
+
+exports.endLecture = async (req, res, next) => {
+    try {
+        const { sessionId } = req.params;
+
+        const session = await CourseSession.findById(sessionId);
+        if (!session) return sendError(res, 404, 'Session not found');
+        if (session.faculty.toString() !== req.user.id) {
+            return sendError(res, 403, 'Not authorized to end this lecture');
+        }
+        
+        session.status = 'completed';
+        session.isActive = false;
+        session.actualEndTime = new Date();
+        await session.save();
+
+        const io = req.app.get('io');
+        if (io) {
+            io.to(session.course.toString()).emit('lectureStatusChanged', { sessionId, status: 'completed' });
+        }
+
+        return sendSuccess(res, 200, 'Lecture completed', session);
+    } catch (error) { next(error); }
 };

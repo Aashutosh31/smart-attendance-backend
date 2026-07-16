@@ -5,7 +5,10 @@ const userSchema = new mongoose.Schema({
   name: { type: String, required: true },
   supabaseId: { type: String, unique: true, sparse: true },
   email: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
+  password: { 
+    type: String, 
+    required: function() { return !this.supabaseId; } 
+  },
   role: { 
     type: String, 
     // THE FIX IS HERE: Added 'coordinator' to the list of accepted roles.

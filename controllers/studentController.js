@@ -4,8 +4,9 @@ const Course = require('../models/Course');
 const User = require('../models/User');
 const faceapi = require('@vladmandic/face-api/dist/face-api.node-wasm.js');
 const canvas = require('canvas');
+const { sendSuccess, sendError } = require('../utils/responseHandler');
 
-exports.getStudentAttendance = async (req, res) => {
+exports.getStudentAttendance = async (req, res, next) => {
     try {
         const attendance = await Attendance.find({ student: req.user.id })
             .populate('course', 'name')
@@ -18,13 +19,13 @@ exports.getStudentAttendance = async (req, res) => {
             status: att.status
         }));
 
-        res.json(formattedAttendance);
+        return sendSuccess(res, 200, 'Attendance fetched successfully', formattedAttendance);
     } catch (err) {
-        res.status(500).json({ message: 'Server Error' });
+        next(err);
     }
 };
 
-exports.getActiveSessions = async (req, res) => {
+exports.getActiveSessions = async (req, res, next) => {
     try {
         // Find courses the student is enrolled in
         const studentCourses = await Course.find({ students: req.user.id });
@@ -36,49 +37,49 @@ exports.getActiveSessions = async (req, res) => {
             isActive: true
         }).populate('course', 'name code');
 
-        res.json(activeSessions);
+        return sendSuccess(res, 200, 'Active sessions fetched', activeSessions);
     } catch (error) {
         console.error("Error fetching active sessions:", error);
-        res.status(500).json({ message: 'Server Error' });
+        next(error);
     }
 };
 
-exports.markStudentAttendance = async (req, res) => {
+exports.markStudentAttendance = async (req, res, next) => {
     const { sessionId } = req.params;
     const { image, beacon } = req.body;
     const studentId = req.user.id;
 
     try {
         if (!image) {
-            return res.status(400).json({ message: 'No face image provided for verification.' });
+            return sendError(res, 400, 'No face image provided for verification.');
         }
 
         const student = await User.findById(studentId);
         if (!student || !student.faceDescriptor || student.faceDescriptor.length === 0) {
-            return res.status(400).json({ message: 'Your face is not enrolled yet. Please enroll first.' });
+            return sendError(res, 400, 'Your face is not enrolled yet. Please enroll first.');
         }
 
         const session = await CourseSession.findById(sessionId)
             .populate('course')
             .populate('classroom');
-        if (!session || !session.isActive) {
-            return res.status(404).json({ message: 'Session not found or is no longer active.' });
+        if (!session || session.status !== 'live' || !session.isActive) {
+            return sendError(res, 404, 'Session not found or is no longer live.');
         }
 
         // --- BLE Beacon Verification ---
         if (session.classroom && session.classroom.beacon) {
             if (!beacon) {
-                return res.status(400).json({ message: 'Bluetooth beacon data is required for this classroom.' });
+                return sendError(res, 400, 'Bluetooth beacon data is required for this classroom.');
             }
             const { uuid, major, minor } = session.classroom.beacon;
             if (beacon.uuid !== uuid || beacon.major !== major || beacon.minor !== minor) {
-                return res.status(401).json({ message: 'Location verification failed. You are not in the correct classroom.' });
+                return sendError(res, 401, 'Location verification failed. You are not in the correct classroom.');
             }
         }
 
         // Validate that student is actually enrolled in this course
         if (!session.course.students.includes(studentId)) {
-            return res.status(403).json({ message: 'You are not enrolled in this course.' });
+            return sendError(res, 403, 'You are not enrolled in this course.');
         }
 
         // --- Face Verification Check ---
@@ -87,29 +88,29 @@ exports.markStudentAttendance = async (req, res) => {
         const detection = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor();
 
         if (!detection) {
-            return res.status(400).json({ message: 'No face detected in the image.' });
+            return sendError(res, 400, 'No face detected in the image.');
         }
 
         const distance = faceapi.euclideanDistance(student.faceDescriptor, detection.descriptor);
         // Distance threshold for SSD Mobilenetv1
         if (distance > 0.55) {
-            return res.status(401).json({ message: 'Face mismatch. Attendance denied.' });
+            return sendError(res, 401, 'Face mismatch. Attendance denied.');
         }
 
         // Check if attendance has already been marked for this session
         const existingAttendance = await Attendance.findOne({
             student: studentId,
-            course: session.course._id,
-            date: { $gte: new Date().setHours(0, 0, 0, 0) } // Check for today's date
+            session: sessionId // Check specific session instead of just the date
         });
 
         if (existingAttendance) {
-            return res.status(400).json({ message: 'Attendance already marked for this course today.' });
+            return sendError(res, 400, 'Attendance already marked for this lecture.');
         }
 
 
         const attendance = new Attendance({
             course: session.course._id,
+            session: sessionId,
             student: studentId,
             faculty: session.faculty,
             status: 'present',
@@ -118,10 +119,22 @@ exports.markStudentAttendance = async (req, res) => {
 
         await attendance.save();
 
-        res.status(201).json({ message: 'Attendance marked successfully.' });
+        // Emit realtime event to the session and course rooms
+        const io = req.app.get('io');
+        if (io) {
+            io.to(sessionId).to(session.course._id.toString()).emit('newAttendance', {
+                studentId,
+                studentName: student.name, // Useful for the frontend dashboard
+                courseId: session.course._id,
+                date: attendance.date,
+                status: attendance.status
+            });
+        }
+
+        return sendSuccess(res, 201, 'Attendance marked successfully.');
 
     } catch (error) {
         console.error("Error marking attendance:", error);
-        res.status(500).json({ message: 'Server Error' });
+        next(error);
     }
 };
