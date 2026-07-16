@@ -10,9 +10,9 @@ const connectDB = async () => {
 };
 
 const closeDB = async () => {
-    await mongoose.connection.dropDatabase();
-    await mongoose.connection.close();
-    await mongoServer.stop();
+    if (mongoose.connection.readyState !== 0) {
+        await mongoose.disconnect();
+    }
 };
 
 const clearDB = async () => {
