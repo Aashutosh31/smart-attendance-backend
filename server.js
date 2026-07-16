@@ -1,8 +1,15 @@
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
+const helmet = require('helmet');
+const mongoSanitize = require('express-mongo-sanitize');
+const xss = require('xss-clean');
+const rateLimit = require('express-rate-limit');
+const morgan = require('morgan');
 const connectDB = require('./config/db');
 const path = require('path');
+const { errorHandler } = require('./middleware/errorMiddleware');
+
 
 // --- THE CRITICAL FIX ---
 // This specific path forces Node.js to load the JavaScript-only version.
@@ -14,7 +21,24 @@ dotenv.config();
 connectDB();
 
 const app = express();
-app.use(express.json({ limit: '50mb' }));
+
+// --- SECURITY MIDDLEWARE ---
+app.use(helmet());
+app.use(mongoSanitize());
+app.use(xss());
+app.use(morgan('combined'));
+
+// --- RATE LIMITING ---
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: 'Too many requests from this IP, please try again later.'
+});
+app.use('/api/', limiter);
+
+// Reduced limit to prevent DoS (5mb is enough for face base64)
+app.use(express.json({ limit: '5mb' }));
+
 
 // --- Flexible CORS Configuration ---
 const allowedOrigins = [
@@ -75,6 +99,9 @@ app.use('/api/hod', require('./routes/hodRoutes.js'));
 app.use('/api/coordinator', require('./routes/coordinatorRoutes.js'));
 app.use('/api/student', require('./routes/studentRoutes.js'));
 app.use('/api/courses', require('./routes/courseRoutes.js'));
+
+// Global Error Handler (must be after routes)
+app.use(errorHandler);
 
 const PORT = process.env.PORT || 8000;
 app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));

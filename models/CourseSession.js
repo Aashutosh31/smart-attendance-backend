@@ -12,6 +12,11 @@ const CourseSessionSchema = new mongoose.Schema({
     ref: 'User',
     required: true,
   },
+  classroom: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Classroom',
+    required: false, // Optional for backward compatibility, but recommended for BLE
+  },
   startTime: {
     type: Date,
     default: Date.now,
