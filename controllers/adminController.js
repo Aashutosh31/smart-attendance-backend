@@ -102,8 +102,14 @@ exports.createCollegeAdmin = async (req, res) => {
 exports.getUsersByRole = async (req, res) => {
     try {
         const { role } = req.params;
-        const users = await User.find({ role: role }).select('id name');
-        res.status(200).json(users);
+        const users = await User.find({ role: role, college: req.user.college }).select('name email department');
+        const mappedUsers = users.map(u => ({
+            id: u._id,
+            full_name: u.name,
+            email: u.email,
+            department: u.department
+        }));
+        res.status(200).json(mappedUsers);
     } catch (error) {
         console.error(`Error fetching users by role: ${error.message}`);
         res.status(500).json({ message: 'Server Error' });
@@ -126,7 +132,10 @@ exports.addFaculty = async (req, res) => {
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
     const { name, email, department, password } = req.body;
-    const finalPassword = password || Math.random().toString(36).slice(-12);
+    if (!password) {
+        return res.status(400).json({ message: 'Please provide a password.' });
+    }
+    const finalPassword = password;
 
     if (!name || !email || !department) {
         return res.status(400).json({ message: 'Please provide name, email, and department.' });
@@ -170,7 +179,10 @@ exports.addHod = async (req, res) => {
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
     const { name, email, department, courseId, password } = req.body;
-    const finalPassword = password || Math.random().toString(36).slice(-12);
+    if (!password) {
+        return res.status(400).json({ message: 'Please provide a password.' });
+    }
+    const finalPassword = password;
 
     if (!name || !email || !department) {
         return res.status(400).json({ message: 'Please provide name, email, and department.' });
@@ -207,6 +219,55 @@ exports.addHod = async (req, res) => {
     }
 };
 
+exports.addCoordinator = async (req, res) => {
+    const supabaseAdmin = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_KEY,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+    // HODs pass fullName as 'name' via frontend sometimes, we handle it if needed
+    const name = req.body.fullName || req.body.name;
+    const { email, department, password } = req.body;
+    if (!password) {
+        return res.status(400).json({ message: 'Please provide a password.' });
+    }
+    const finalPassword = password;
+
+    if (!name || !email || !department) {
+        return res.status(400).json({ message: 'Please provide name, email, and department.' });
+    }
+    try {
+        const { data: authCreateData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+            email: email,
+            password: finalPassword,
+            email_confirm: true,
+            user_metadata: { full_name: name, role: 'program_coordinator', college_id: req.user.college },
+            app_metadata: { role: 'program_coordinator' }
+        });
+        if (authError) throw new Error(authError.message);
+        
+        await supabaseAdmin.from('profiles').upsert({
+            id: authCreateData.user.id,
+            email,
+            full_name: name,
+            role: 'program_coordinator',
+            college_id: req.user.college,
+        });
+
+        const newCoordinator = new User({
+            supabaseId: authCreateData.user.id, name, email, department, college: req.user.college, role: 'program_coordinator'
+        });
+        await newCoordinator.save();
+        res.status(201).json({ message: "Coordinator created successfully in Supabase and MongoDB.", user: newCoordinator });
+    } catch (error) {
+        console.error(`Error adding coordinator: ${error.message}`);
+        if (error.message.includes('already registered')) {
+            return res.status(409).json({ message: 'A user with this email is already registered.' });
+        }
+        res.status(500).json({ message: 'Server error while adding coordinator.' });
+    }
+};
+
 exports.getAllStudents = async (req, res) => {
     try {
         const students = await User.find({ role: 'student' })
@@ -240,6 +301,7 @@ exports.deleteUser = async (req, res, next) => {
 exports.getReports = async (req, res, next) => {
     try {
         const Department = require('../models/Department');
+        const Attendance = require('../models/Attendance');
         const collegeId = req.user.college;
         const depts = await Department.find({ college: collegeId });
         
@@ -247,19 +309,29 @@ exports.getReports = async (req, res, next) => {
             const User = require('../models/User');
             const students = await User.countDocuments({ role: 'student', department: dept._id });
             const faculty = await User.countDocuments({ role: 'faculty', department: dept._id });
+            
+            // Calculate real attendance for department
+            const allAttendances = await Attendance.find({}).populate('course');
+            const deptAttendances = allAttendances.filter(att => att.course && att.course.department && att.course.department.toString() === dept._id.toString());
+            let totalPresents = 0;
+            deptAttendances.forEach(att => {
+                if (att.status === 'present') totalPresents++;
+            });
+            const attendance = deptAttendances.length > 0 
+                ? Math.round((totalPresents / deptAttendances.length) * 100) 
+                : 0;
+
             return {
                 dept: dept.name,
                 students,
                 faculty,
-                attendance: 85, // Stub
-                reports: 5
+                attendance,
+                reports: 0 // Will hook up to real reports model later if needed
             };
         }));
 
         const reports = {
-            attendanceReports: [
-                { id: 1, title: 'Real-time Daily Summary', type: 'attendance', department: 'All', status: 'Generated', date: new Date().toLocaleDateString() }
-            ],
+            attendanceReports: [], // In a real system, these would be fetched from a Reports collection.
             departmentStats,
             facultyReports: [],
             studentReports: []
@@ -309,14 +381,22 @@ exports.getDashboardAnalytics = async (req, res, next) => {
             const deptStudents = await User.countDocuments({ role: 'student', department: dept._id });
             const deptFaculty = await User.countDocuments({ role: 'faculty', department: dept._id });
             
-            // Just average for now
+            const deptAttendances = allAttendances.filter(att => att.course && att.course.department && att.course.department.toString() === dept._id.toString());
+            let deptPresents = 0;
+            deptAttendances.forEach(att => {
+                if (att.status === 'present') deptPresents++;
+            });
+            const deptAverage = deptAttendances.length > 0 
+                ? Math.round((deptPresents / deptAttendances.length) * 100) 
+                : 0;
+            
             return {
                 dept: dept.name,
                 students: deptStudents,
                 faculty: deptFaculty,
-                attendance: averageAttendance, // We could filter by course department
-                trend: 5,
-                reports: 12
+                attendance: deptAverage,
+                trend: 0, 
+                reports: 0 
             };
         }));
 

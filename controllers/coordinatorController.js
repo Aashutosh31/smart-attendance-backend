@@ -3,8 +3,19 @@ const Course = require('../models/Course');
 const Attendance = require('../models/Attendance');
 const { sendSuccess, sendError } = require('../utils/responseHandler');
 
-exports.addStudent = async (req, res) => {
-    const { name, email, rollNo, courseId } = req.body;
+exports.addStudent = async (req, res, next) => {
+    const { createClient } = require('@supabase/supabase-js');
+    const supabaseAdmin = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_KEY,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+    const { name, email, rollNo, courseId, password } = req.body;
+    if (!password) {
+        return res.status(400).json({ message: 'Please provide a password.' });
+    }
+    const finalPassword = password;
+
     try {
         let user = await User.findOne({ email });
         if (user) {
@@ -16,14 +27,32 @@ exports.addStudent = async (req, res) => {
             return res.status(404).json({ message: 'Course not found.' });
         }
         
-        const temporaryPassword = Math.random().toString(36).slice(-8);
+        const { data: authCreateData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+            email: email,
+            password: finalPassword,
+            email_confirm: true,
+            user_metadata: { full_name: name, role: 'student', college_id: req.user.college },
+            app_metadata: { role: 'student' }
+        });
+        if (authError) throw new Error(authError.message);
+
+        await supabaseAdmin.from('profiles').upsert({
+            id: authCreateData.user.id,
+            email,
+            full_name: name,
+            role: 'student',
+            college_id: req.user.college,
+        });
 
         user = new User({
+            supabaseId: authCreateData.user.id,
             name,
             email,
-            password: temporaryPassword,
+            enrollmentNumber: rollNo,
             role: 'student',
-            course: courseId // Assign the course to the student
+            college: req.user.college,
+            department: req.user.department,
+            course: courseId
         });
         await user.save();
 
@@ -112,49 +141,96 @@ exports.getAttendanceByCourseAndDate = async (req, res, next) => {
 
 exports.getDashboardAnalytics = async (req, res, next) => {
     try {
-        const CourseSession = require('../models/CourseSession');
-        const SecurityLog = require('../models/SecurityLog');
-        const Classroom = require('../models/Classroom');
+        const User = require('../models/User');
         
         const collegeId = req.user.college;
         const deptId = req.user.department;
 
-        const totalClasses = await CourseSession.countDocuments();
-        const activeBeacons = await Classroom.countDocuments({ beacon: { $exists: true } });
-        
-        const anomalies = await SecurityLog.countDocuments({
-            eventType: { $in: ['ble_spoof_attempt', 'face_mismatch', 'duplicate_face_enrollment'] }
-        });
-        
+        // Total Students
+        const students = await User.find({ role: 'student', college: collegeId, department: deptId });
+        const totalStudents = students.length;
+
+        // Calculate attendance per student
         const allAttendances = await Attendance.find({}).populate({
             path: 'course',
             match: { department: deptId }
         });
+        
         const validAttendances = allAttendances.filter(att => att.course !== null);
+        
         let totalPresents = 0;
+        const studentStats = {};
+        
         validAttendances.forEach(att => {
             if (att.status === 'present') totalPresents++;
+            const sid = att.student.toString();
+            if (!studentStats[sid]) {
+                studentStats[sid] = { total: 0, present: 0 };
+            }
+            studentStats[sid].total++;
+            if (att.status === 'present') studentStats[sid].present++;
         });
-        const attendanceRate = validAttendances.length > 0 
+
+        const averageAttendance = validAttendances.length > 0 
             ? Math.round((totalPresents / validAttendances.length) * 100) 
             : 0;
-            
-        const recentSessions = await CourseSession.find({ status: 'live' }).populate('course', 'name').limit(2);
-        const recentActivity = recentSessions.map(sess => ({
-            id: sess._id,
-            action: 'Lecture Live',
-            details: `${sess.course.name}`,
-            time: new Date(sess.actualStartTime).toLocaleTimeString()
-        }));
+
+        let atRiskStudentsCount = 0;
+        const lowAttendanceStudents = [];
+
+        for (const student of students) {
+            const stats = studentStats[student._id.toString()];
+            let percentage = 0;
+            if (stats && stats.total > 0) {
+                percentage = Math.round((stats.present / stats.total) * 100);
+            }
+            if (percentage < 75) {
+                atRiskStudentsCount++;
+                if (lowAttendanceStudents.length < 5) {
+                    lowAttendanceStudents.push({
+                        id: student._id,
+                        name: student.name,
+                        rollNo: student.enrollmentNumber || 'N/A',
+                        attendancePercentage: percentage
+                    });
+                }
+            }
+        }
+
+        // Generate trend data (last 7 days) from validAttendances
+        const attendanceTrend = [];
+        for (let i = 6; i >= 0; i--) {
+            const d = new Date();
+            d.setDate(d.getDate() - i);
+            d.setHours(0, 0, 0, 0);
+            const nextD = new Date(d);
+            nextD.setDate(d.getDate() + 1);
+
+            const dayAttendances = validAttendances.filter(att => 
+                att.date >= d && att.date < nextD
+            );
+
+            let dayPresents = 0;
+            dayAttendances.forEach(att => {
+                if (att.status === 'present') dayPresents++;
+            });
+
+            const dayPercentage = dayAttendances.length > 0 
+                ? Math.round((dayPresents / dayAttendances.length) * 100) 
+                : 0;
+
+            attendanceTrend.push({
+                day: d.toLocaleDateString('en-US', { weekday: 'short' }),
+                percentage: dayPercentage
+            });
+        }
 
         return sendSuccess(res, 200, 'Analytics fetched successfully', {
-            stats: {
-                totalClasses,
-                attendanceRate,
-                anomalies,
-                activeBeacons
-            },
-            recentActivity
+            averageAttendance,
+            totalStudents,
+            atRiskStudentsCount,
+            lowAttendanceStudents,
+            attendanceTrend
         });
     } catch (error) { next(error); }
 };

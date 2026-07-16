@@ -13,12 +13,6 @@ exports.getAssignedCourses = async (req, res, next) => {
     } catch (err) { next(err); }
 };
 
-exports.recognizeStudentFace = async (req, res, next) => {
-    // This remains a dummy function as facial recognition is a complex service.
-    const mockStudent = { id: `mockStudent_${Date.now()}`, name: 'Scanned Student' };
-    return sendSuccess(res, 200, 'Student scanned (mock)', mockStudent);
-};
-
 exports.saveAttendance = async (req, res, next) => {
     const { studentIds, lectureNumber } = req.body; // These are the PRESENT students
     const { courseId } = req.params;
@@ -71,7 +65,8 @@ exports.getDashboardStats = async (req, res, next) => {
         const facultyId = req.user.id;
         
         // Active Courses count
-        const totalCourses = await Course.countDocuments({ faculty: facultyId });
+        const courses = await Course.find({ faculty: facultyId });
+        const totalCourses = courses.length;
         
         const studentIds = courses.reduce((acc, course) => {
             return acc.concat(course.students);

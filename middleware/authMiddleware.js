@@ -50,7 +50,8 @@ const protect = async (req, res, next) => {
       if (!mongoUser) {
         console.log(`User not found in MongoDB. Creating new user for: ${supabaseUser.email}`);
         
-        const randomPassword = Math.random().toString(36).slice(-8);
+        const crypto = require('crypto');
+        const randomPassword = crypto.randomBytes(8).toString('hex');
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(randomPassword, salt);
 
