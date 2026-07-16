@@ -112,16 +112,49 @@ exports.getAttendanceByCourseAndDate = async (req, res, next) => {
 
 exports.getDashboardAnalytics = async (req, res, next) => {
     try {
+        const CourseSession = require('../models/CourseSession');
+        const SecurityLog = require('../models/SecurityLog');
+        const Classroom = require('../models/Classroom');
+        
+        const collegeId = req.user.college;
+        const deptId = req.user.department;
+
+        const totalClasses = await CourseSession.countDocuments();
+        const activeBeacons = await Classroom.countDocuments({ beacon: { $exists: true } });
+        
+        const anomalies = await SecurityLog.countDocuments({
+            eventType: { $in: ['ble_spoof_attempt', 'face_mismatch', 'duplicate_face_enrollment'] }
+        });
+        
+        const allAttendances = await Attendance.find({}).populate({
+            path: 'course',
+            match: { department: deptId }
+        });
+        const validAttendances = allAttendances.filter(att => att.course !== null);
+        let totalPresents = 0;
+        validAttendances.forEach(att => {
+            if (att.status === 'present') totalPresents++;
+        });
+        const attendanceRate = validAttendances.length > 0 
+            ? Math.round((totalPresents / validAttendances.length) * 100) 
+            : 0;
+            
+        const recentSessions = await CourseSession.find({ status: 'live' }).populate('course', 'name').limit(2);
+        const recentActivity = recentSessions.map(sess => ({
+            id: sess._id,
+            action: 'Lecture Live',
+            details: `${sess.course.name}`,
+            time: new Date(sess.actualStartTime).toLocaleTimeString()
+        }));
+
         return sendSuccess(res, 200, 'Analytics fetched successfully', {
             stats: {
-                totalClasses: 120,
-                attendanceRate: 92,
-                anomalies: 3,
-                activeBeacons: 15
+                totalClasses,
+                attendanceRate,
+                anomalies,
+                activeBeacons
             },
-            recentActivity: [
-                { id: 1, action: 'Lecture Started', details: 'CS301 by Prof. Smith', time: '10 mins ago' }
-            ]
+            recentActivity
         });
     } catch (error) { next(error); }
 };

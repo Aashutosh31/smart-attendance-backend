@@ -73,12 +73,10 @@ exports.getDashboardStats = async (req, res, next) => {
         // Active Courses count
         const totalCourses = await Course.countDocuments({ faculty: facultyId });
         
-        // Students count (sum of students in all courses)
-        const courses = await Course.find({ faculty: facultyId });
-        let totalStudents = 0;
-        courses.forEach(c => {
-            totalStudents += c.students.length;
-        });
+        const studentIds = courses.reduce((acc, course) => {
+            return acc.concat(course.students);
+        }, []);
+        const totalStudents = new Set(studentIds).size; // Unique students
 
         // Today's lectures
         const today = new Date();
@@ -89,14 +87,25 @@ exports.getDashboardStats = async (req, res, next) => {
             status: 'scheduled'
         });
 
-        // Attendance rate (last 30 days) - mock implementation for speed, can be real later
-        const attendanceRate = 85; 
-        
-        // Recent activities (Mocked for now since Activity Log model is not fully built for general activities)
-        const recentActivities = [
-            { id: 1, activity: 'New session scheduled', time: '1 hour ago', type: 'course' },
-            { id: 2, activity: 'Lecture completed', time: 'Yesterday', type: 'attendance' }
-        ];
+        const courseIds = courses.map(c => c._id);
+        const allAttendances = await Attendance.find({ course: { $in: courseIds } });
+        let totalPresents = 0;
+        allAttendances.forEach(att => {
+            if (att.status === 'present') totalPresents++;
+        });
+        const attendanceRate = allAttendances.length > 0 
+            ? Math.round((totalPresents / allAttendances.length) * 100) 
+            : 0;
+            
+        const recentSessions = await CourseSession.find({ faculty: facultyId, status: 'completed' })
+            .sort({ actualEndTime: -1 }).limit(3).populate('course', 'name');
+            
+        const recentActivities = recentSessions.map(sess => ({
+            id: sess._id,
+            activity: `Lecture completed for ${sess.course.name}`,
+            time: new Date(sess.actualEndTime).toLocaleTimeString(),
+            type: 'attendance'
+        }));
 
         return sendSuccess(res, 200, 'Stats fetched', {
             stats: {

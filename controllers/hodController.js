@@ -35,30 +35,41 @@ exports.getFacultyAttendanceToday = async (req, res) => {
     }
 };
 
-exports.getFacultyReports = async (req, res) => {
+const { sendSuccess } = require('../utils/responseHandler');
+
+exports.getFacultyReports = async (req, res, next) => {
     try {
-        // This is a placeholder. A real report would query the Attendance model for faculty.
-        const faculty = await User.find({ role: 'faculty' }).limit(5);
-        const reports = faculty.map(f => ({
-            id: f._id,
-            name: f.name,
-            department: f.department || 'Computer Science',
-            date: new Date(),
-            status: 'present',
-            checkInTime: '09:05 AM'
+        const faculty = await User.find({ role: 'faculty', department: req.user.department });
+        const facultyIds = faculty.map(f => f._id);
+        const attendanceRecords = await FacultyAttendance.find({ faculty: { $in: facultyIds } })
+            .populate('faculty', 'name department')
+            .sort({ date: -1 })
+            .limit(20);
+            
+        const reports = attendanceRecords.map(rec => ({
+            id: rec._id,
+            name: rec.faculty.name,
+            department: rec.faculty.department || 'General',
+            date: rec.date,
+            status: rec.status,
+            checkInTime: rec.checkInTime || 'N/A'
         }));
-        res.json(reports);
+        
+        return sendSuccess(res, 200, 'Faculty reports fetched', reports);
     } catch (err) {
-        res.status(500).json({ message: 'Server Error' });
+        next(err);
     }
 };
 
-exports.getHodNotifications = async (req, res) => {
+exports.getHodNotifications = async (req, res, next) => {
     try {
-        // Dummy notification logic
-        const notifications = [
-            { id: 1, message: "Dr. Evans has been absent for 3 consecutive days.", date: new Date() },
-        ];
+        const SecurityLog = require('../models/SecurityLog');
+        const logs = await SecurityLog.find({}).sort({ timestamp: -1 }).limit(5); // In a real scenario, filter by department users
+        const notifications = logs.map(l => ({
+            id: l._id,
+            message: `Security Event: ${l.eventType} - ${l.details}`,
+            date: l.timestamp
+        }));
         return sendSuccess(res, 200, 'HOD notifications fetched', notifications);
     } catch (error) { next(error); }
 };
@@ -76,16 +87,34 @@ exports.getDashboardAnalytics = async (req, res, next) => {
         const totalFaculty = await User.countDocuments({ role: 'faculty', college: collegeId, department: hodDeptId });
         const activeCourses = await Course.countDocuments({ college: collegeId, department: hodDeptId });
 
+        // Calculate average attendance for this department
+        const allAttendances = await Attendance.find({}).populate('course');
+        const deptAttendances = allAttendances.filter(att => att.course && att.course.department && att.course.department.toString() === hodDeptId.toString());
+        
+        let totalPresents = 0;
+        deptAttendances.forEach(att => {
+            if (att.status === 'present') totalPresents++;
+        });
+        const averageAttendance = deptAttendances.length > 0 
+            ? Math.round((totalPresents / deptAttendances.length) * 100) 
+            : 0;
+            
+        const SecurityLog = require('../models/SecurityLog');
+        const recentAlerts = await SecurityLog.find({}).sort({ timestamp: -1 }).limit(3).then(logs => logs.map(l => ({
+            id: l._id,
+            type: 'warning',
+            message: l.details,
+            time: new Date(l.timestamp).toLocaleTimeString()
+        })));
+
         return sendSuccess(res, 200, 'Analytics fetched successfully', {
             stats: {
                 totalStudents,
                 totalFaculty,
                 activeCourses,
-                averageAttendance: 88 // Mock
+                averageAttendance
             },
-            recentAlerts: [
-                { id: 1, type: 'warning', message: 'Low attendance in CS201', time: '2 hours ago' }
-            ]
+            recentAlerts
         });
     } catch (error) { next(error); }
 };
