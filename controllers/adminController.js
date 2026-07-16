@@ -227,7 +227,8 @@ exports.addCoordinator = async (req, res) => {
     );
     // HODs pass fullName as 'name' via frontend sometimes, we handle it if needed
     const name = req.body.fullName || req.body.name;
-    const { email, department, password } = req.body;
+    const { email, password } = req.body;
+    let department = req.body.department || req.user.department;
     if (!password) {
         return res.status(400).json({ message: 'Please provide a password.' });
     }
