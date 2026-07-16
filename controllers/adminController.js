@@ -125,23 +125,32 @@ exports.addFaculty = async (req, res) => {
       process.env.SUPABASE_SERVICE_KEY,
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
-    const { name, email, department } = req.body;
-    const temporaryPassword = Math.random().toString(36).slice(-12);
+    const { name, email, department, password } = req.body;
+    const finalPassword = password || Math.random().toString(36).slice(-12);
 
     if (!name || !email || !department) {
         return res.status(400).json({ message: 'Please provide name, email, and department.' });
     }
     try {
-        const { data: { user }, error: authError } = await supabaseAdmin.auth.admin.createUser({
+        const { data: authCreateData, error: authError } = await supabaseAdmin.auth.admin.createUser({
             email: email,
-            password: temporaryPassword,
+            password: finalPassword,
             email_confirm: true,
-            app_metadata: { role: 'faculty', name: name }
+            user_metadata: { full_name: name, role: 'faculty', college_id: req.user.college },
+            app_metadata: { role: 'faculty' }
         });
         if (authError) throw new Error(authError.message);
+        
+        await supabaseAdmin.from('profiles').upsert({
+            id: authCreateData.user.id,
+            email,
+            full_name: name,
+            role: 'faculty',
+            college_id: req.user.college,
+        });
 
         const newFaculty = new User({
-            supabaseId: user.id, name, email, department, role: 'faculty'
+            supabaseId: authCreateData.user.id, name, email, department, college: req.user.college, role: 'faculty'
         });
         await newFaculty.save();
         res.status(201).json({ message: "Faculty created in Supabase and MongoDB.", user: newFaculty });
@@ -160,23 +169,32 @@ exports.addHod = async (req, res) => {
       process.env.SUPABASE_SERVICE_KEY,
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
-    const { name, email, department, courseId } = req.body;
-    const temporaryPassword = Math.random().toString(36).slice(-12);
+    const { name, email, department, courseId, password } = req.body;
+    const finalPassword = password || Math.random().toString(36).slice(-12);
 
     if (!name || !email || !department) {
         return res.status(400).json({ message: 'Please provide name, email, and department.' });
     }
     try {
-        const { data: { user }, error: authError } = await supabaseAdmin.auth.admin.createUser({
+        const { data: authCreateData, error: authError } = await supabaseAdmin.auth.admin.createUser({
             email: email,
-            password: temporaryPassword,
+            password: finalPassword,
             email_confirm: true,
-            app_metadata: { role: 'hod', name: name }
+            user_metadata: { full_name: name, role: 'hod', college_id: req.user.college },
+            app_metadata: { role: 'hod' }
         });
         if (authError) throw new Error(authError.message);
+        
+        await supabaseAdmin.from('profiles').upsert({
+            id: authCreateData.user.id,
+            email,
+            full_name: name,
+            role: 'hod',
+            college_id: req.user.college,
+        });
 
         const newHod = new User({
-            supabaseId: user.id, name, email, department, course: courseId, role: 'hod'
+            supabaseId: authCreateData.user.id, name, email, department, course: courseId, college: req.user.college, role: 'hod'
         });
         await newHod.save();
         res.status(201).json({ message: "HOD created successfully in Supabase and MongoDB.", user: newHod });
